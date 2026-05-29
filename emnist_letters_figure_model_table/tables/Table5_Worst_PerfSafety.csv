@@ -1,0 +1,5 @@
+encoder,worst_accuracy,worst_accuracy_op,worst_accuracy_level,worst_max_severity,worst_severity_op,worst_severity_level
+rate,0.1505,occlusion,1.0,0.22499999999999437,blur,0.5
+sparse,0.151,occlusion,1.0,2.880891164321895e-07,blur,0.5
+temporal,0.142,occlusion,1.0,5.3999999999998645,clean,0.0
+optim,0.1555,occlusion,1.0,0.22499999999999437,blur,0.5

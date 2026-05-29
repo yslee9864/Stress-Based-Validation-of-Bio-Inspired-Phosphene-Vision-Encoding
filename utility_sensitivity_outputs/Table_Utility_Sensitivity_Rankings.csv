@@ -1,0 +1,9 @@
+Benchmark,Scenario,Rank 1,Rank 2,Rank 3,Rank 4
+EMNIST,Balanced,sparse,optim,rate,temporal
+EMNIST,Performance-dominant,optim,rate,sparse,temporal
+EMNIST,Stability-dominant,rate,optim,sparse,temporal
+EMNIST,Safety-dominant,sparse,optim,rate,temporal
+COCO,Balanced,sparse,optim,rate,temporal
+COCO,Performance-dominant,sparse,optim,rate,temporal
+COCO,Stability-dominant,sparse,optim,rate,temporal
+COCO,Safety-dominant,sparse,optim,rate,temporal

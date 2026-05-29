@@ -1,0 +1,9 @@
+Benchmark,Encoder,Balanced,Performance-dominant,Stability-dominant,Safety-dominant
+EMNIST,rate,1.2848,1.6999,1.5712,0.5833
+EMNIST,sparse,1.3097,1.6351,1.5082,0.7858
+EMNIST,temporal,-2.6843,-0.7174,-0.818,-6.5175
+EMNIST,optim,1.2958,1.7016,1.5583,0.6275
+COCO,rate,-0.1455,0.3565,0.6163,-1.4092
+COCO,sparse,0.9877,1.0191,1.3514,0.5926
+COCO,temporal,-0.4169,0.1858,0.488,-1.9245
+COCO,optim,-0.1083,0.3776,0.6919,-1.3943
