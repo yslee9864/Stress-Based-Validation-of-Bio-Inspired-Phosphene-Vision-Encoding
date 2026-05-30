@@ -7,6 +7,7 @@ This repository provides reproducibility materials for the manuscript:
 ## Repository Structure
 
 ```text
+Repository structure
 .
 ├── README.md
 ├── notebooks/
@@ -30,7 +31,12 @@ This repository provides reproducibility materials for the manuscript:
 │   ├── Table_Utility_Sensitivity_Rankings.csv
 │   └── Table_Utility_Sensitivity_Scenarios.csv
 └── supplementary/
-    └── supplementary_materials.pdf
+    ├── supplementary_materials.pdf
+    ├── Supplementary_Figure_S1_OperatorWise_Accuracy.png
+    ├── Supplementary_Figure_S2_OperatorWise_Severity.png
+    └── Supplementary_Figure_S3_OperatorWise_TSI.png
+```
+
 ```
 
 ## Main Notebook
