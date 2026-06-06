@@ -1,0 +1,5 @@
+benchmark,encoder,n_test,accuracy,balanced_accuracy,macro_f1,prediction_csv,confusion_matrix_csv,classification_report_csv,confusion_matrix_png
+coco_4cls,rate,800,0.3,0.3,0.2744,COCO_clean_predictions_rate.csv,COCO_confusion_matrix_rate.csv,COCO_classification_report_rate.csv,COCO_confusion_matrix_rate.png
+coco_4cls,sparse,800,0.3238,0.3238,0.3163,COCO_clean_predictions_sparse.csv,COCO_confusion_matrix_sparse.csv,COCO_classification_report_sparse.csv,COCO_confusion_matrix_sparse.png
+coco_4cls,temporal,800,0.2962,0.2962,0.27,COCO_clean_predictions_temporal.csv,COCO_confusion_matrix_temporal.csv,COCO_classification_report_temporal.csv,COCO_confusion_matrix_temporal.png
+coco_4cls,optim,800,0.3012,0.3012,0.2745,COCO_clean_predictions_optim.csv,COCO_confusion_matrix_optim.csv,COCO_classification_report_optim.csv,COCO_confusion_matrix_optim.png

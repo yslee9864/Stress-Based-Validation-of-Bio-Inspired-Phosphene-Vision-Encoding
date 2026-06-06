@@ -1,0 +1,9 @@
+benchmark,encoder,TSI_P,TSI_R,R_safe,utility,non_dominated,dominated_by,dominates
+emnist_letters,rate,0.6953,0.6428,0.1484,1.1897,True,none,none
+emnist_letters,sparse,0.6285,0.6725,0.0,1.301,True,none,none
+emnist_letters,temporal,0.6754,0.6479,4.0859,-2.7626,True,none,none
+emnist_letters,optim,0.6939,0.6325,0.1313,1.1952,True,none,none
+coco_4cls,rate,0.3733,0.5946,1.1078,-0.1399,False,sparse,none
+coco_4cls,sparse,0.3889,0.6258,0.0,1.0147,True,none,"rate, temporal, optim"
+coco_4cls,temporal,0.3736,0.6084,1.6375,-0.6555,False,sparse,none
+coco_4cls,optim,0.3752,0.5895,1.1125,-0.1478,False,sparse,none
