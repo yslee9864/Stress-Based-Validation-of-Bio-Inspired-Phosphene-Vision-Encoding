@@ -1,0 +1,3179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>FINAL_REPRO_RunPackageC_EMNIST_COCO_seed0042_20260614 - 복사본</title>
+<style>
+    :root { color-scheme: light; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f8fafc; color: #0f172a; line-height: 1.55; }
+    .nb-wrap { max-width: 960px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+    .nb-cell { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .nb-cell-h { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin: 0 0 0.65rem; }
+    .nb-md { font-size: 0.95rem; }
+    .nb-md pre, .nb-out-pre { background: #f1f5f9; border-radius: 8px; padding: 0.75rem 1rem; overflow: auto; font-size: 0.85rem; border: 1px solid #e2e8f0; }
+    .nb-md code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.88em; }
+    .nb-md pre code { background: transparent; padding: 0; }
+    .nb-in-label { font-size: 0.8rem; color: #64748b; margin-bottom: 0.35rem; }
+    .nb-in pre { margin: 0; }
+    .nb-out { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed #e2e8f0; }
+    .nb-out-title { font-size: 0.8rem; font-weight: 600; color: #64748b; margin-bottom: 0.4rem; }
+    .nb-err { color: #b91c1c; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }
+    .nb-html-out { overflow: auto; max-width: 100%; font-size: 0.9rem; }
+    .nb-img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 0.5rem 0; }
+    .nb-raw pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+<div class="nb-wrap">
+<header style="margin-bottom:1.5rem">
+  <h1 style="font-size:1.35rem;font-weight:700;margin:0 0 0.35rem">FINAL_REPRO_RunPackageC_EMNIST_COCO_seed0042_20260614 - 복사본</h1>
+  <p style="margin:0;font-size:0.85rem;opacity:0.8">Exported from Jupyter notebook (nbformat 4) — static HTML with embedded CSS.</p>
+</header>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 1</h2><div class="nb-md"><h1>RunPackageC — EMNIST + COCO Subset Reproduction Notebook</h1>
+<p>이 notebook은 <code>RunPackageC_EMNIST_COCO</code> 실험 패키지의 전체 재현용 버전이다.<br>입력 데이터는</p>
+<ul>
+<li><strong>EMNIST Letters</strong> (symbolic recognition)</li>
+<li><strong>COCO-derived 4-class subset</strong> (<code>none / person / car / both</code>)</li>
+</ul>
+<p>으로 구성되며, 두 benchmark에 대해 동일한 phosphene-encoding evaluation pipeline을 적용한다.</p>
+<p>주요 특징은 다음과 같다.</p>
+<ol>
+<li><strong>benchmark-specific shared decoder</strong>: 각 benchmark마다 clean percept 혼합분포로 decoder를 1회 학습하고, 그 benchmark 내부에서는 encoder, stress, topology, fuzzing 동안 고정한다.  </li>
+<li><strong>동일 encoder / 동일 safety proxy / 동일 stress protocol</strong>: rate, sparse, temporal, optim encoder를 동일 규칙 아래 비교한다.  </li>
+<li><strong>분리된 저장 경로</strong>: 모든 결과는 <code>RunPackageC_EMNIST_COCO</code> 루트 아래에 저장되며, 기존 RunPackageB 계열 결과와 섞이지 않도록 분리된다.  </li>
+<li><strong>CPU + Google Colab 기준 실행 가능</strong>: <code>pilot</code> / <code>final</code> 모드를 분리하고, COCO는 streaming + cached subset manifest 방식으로 처리한다.</li>
+</ol>
+<p>권장 실행 순서:</p>
+<ul>
+<li>처음 1회는 <code>RUN_MODE=&quot;pilot&quot;</code>로 실행</li>
+<li>결과가 정상 생성되면 <code>RUN_MODE=&quot;final&quot;</code>로 전환</li>
+</ul>
+</div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 2</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 0. Install dependencies
+import sys, subprocess, pkgutil
+
+REQS = [
+    &quot;numpy&quot;,
+    &quot;pandas&quot;,
+    &quot;matplotlib&quot;,
+    &quot;scikit-learn&quot;,
+    &quot;scipy&quot;,
+    &quot;pillow&quot;,
+    &quot;torch&quot;,
+    &quot;torchvision&quot;,
+    &quot;tqdm&quot;,
+    &quot;datasets&quot;,
+    &quot;ripser&quot;,
+    &quot;persim&quot;,
+]
+
+for pkg in REQS:
+    mod = pkg.replace(&quot;-&quot;, &quot;_&quot;)
+    if mod == &quot;scikit_learn&quot;:
+        mod = &quot;sklearn&quot;
+    if pkgutil.find_loader(mod) is None:
+        print(f&quot;[install] {pkg}&quot;)
+        subprocess.check_call([sys.executable, &quot;-m&quot;, &quot;pip&quot;, &quot;install&quot;, &quot;-q&quot;, pkg])
+
+print(&quot;Dependency setup complete.&quot;)
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">/tmp/ipykernel_58039/1684375931.py:23: DeprecationWarning: &#39;pkgutil.find_loader&#39; is deprecated and slated for removal in Python 3.14; use importlib.util.find_spec() instead
+  if pkgutil.find_loader(mod) is None:
+</pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">[install] pillow
+Dependency setup complete.
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 3</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 1. Environment setup, imports, paths, and reproducibility controls
+import os
+import io
+import json
+import math
+import time
+import random
+import warnings
+import platform
+import hashlib
+from datetime import datetime
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from collections import defaultdict
+
+# Reproducibility-related environment variables.
+# NOTE: PYTHONHASHSEED is most effective when set before the Python process starts;
+# it is still recorded here for transparency.
+os.environ.setdefault(&quot;PYTHONHASHSEED&quot;, &quot;42&quot;)
+os.environ.setdefault(&quot;CUBLAS_WORKSPACE_CONFIG&quot;, &quot;:4096:8&quot;)
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from PIL import Image, ImageOps
+from tqdm.auto import tqdm
+
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+
+from torchvision.datasets import EMNIST
+
+from scipy.ndimage import gaussian_filter
+
+from datasets import load_dataset
+
+try:
+    from ripser import ripser
+    from persim import bottleneck
+    HAS_RIPSER = True
+except Exception as e:
+    HAS_RIPSER = False
+    print(&quot;[warn] ripser/persim unavailable -&gt; topology fallback will be used.&quot;, repr(e))
+
+warnings.filterwarnings(&quot;ignore&quot;, category=UserWarning)
+
+# ---------------------------------------------------------------------
+# Global seed and deterministic execution policy
+# ---------------------------------------------------------------------
+SEED = 42
+
+def seed_everything(seed: int = SEED):
+    &quot;&quot;&quot;Seed Python, NumPy, and PyTorch RNGs for reproducible execution.&quot;&quot;&quot;
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+    # Deterministic settings. CPU runs should be deterministic; CUDA can still
+    # show small nondeterminism for some kernels, so CPU is preferred for final runs.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+    except TypeError:
+        torch.use_deterministic_algorithms(True)
+
+def stable_seed(base_seed: int, *parts) -&gt; int:
+    &quot;&quot;&quot;Create a process-independent deterministic integer seed from text parts.&quot;&quot;&quot;
+    msg = &quot;::&quot;.join([str(base_seed)] + [str(p) for p in parts])
+    digest = hashlib.sha256(msg.encode(&quot;utf-8&quot;)).hexdigest()
+    return int(digest[:8], 16) % (2**31 - 1)
+
+seed_everything(SEED)
+
+DEVICE = &quot;cuda&quot; if torch.cuda.is_available() else &quot;cpu&quot;
+print(&quot;DEVICE:&quot;, DEVICE)
+print(&quot;SEED:&quot;, SEED)
+
+# ---------------------------------------------------------------------
+# Project root and run-specific output root
+# ---------------------------------------------------------------------
+IN_COLAB = False
+try:
+    import google.colab  # type: ignore
+    from google.colab import drive  # type: ignore
+    IN_COLAB = True
+except Exception:
+    pass
+
+USE_DRIVE = True if IN_COLAB else False
+
+if USE_DRIVE:
+    drive.mount(&quot;/content/drive&quot;)
+    PROJECT_ROOT = Path(&quot;/content/drive/MyDrive/RunPackageC_EMNIST_COCO&quot;).resolve()
+else:
+    PROJECT_ROOT = Path(&quot;/content/RunPackageC_EMNIST_COCO&quot;).resolve()
+
+PROJECT_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Shared directories: reused across runs; not manuscript output.
+DATA_DIR = PROJECT_ROOT / &quot;data&quot;; DATA_DIR.mkdir(exist_ok=True)
+CACHE_DIR = PROJECT_ROOT / &quot;cache&quot;; CACHE_DIR.mkdir(exist_ok=True)
+
+# Output directories: every execution is isolated under a separate run folder.
+# To reproduce or compare two runs manually, either leave RUN_ID empty
+# for timestamped folders or set os.environ[&quot;RUN_ID&quot;] before this cell.
+RUN_ID = os.environ.get(&quot;RUN_ID&quot;, &quot;&quot;).strip()
+if not RUN_ID:
+    RUN_ID = f&quot;Run_seed{SEED:04d}_&quot; + datetime.now().strftime(&quot;%Y%m%d_%H%M%S&quot;)
+
+RUN_ROOT = PROJECT_ROOT / &quot;runs&quot; / RUN_ID
+RUN_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Backward compatibility: existing functions use ROOT as the output root.
+ROOT = RUN_ROOT
+SUMMARY_DIR = ROOT / &quot;summary&quot;; SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
+
+os.chdir(ROOT)
+print(&quot;PROJECT_ROOT:&quot;, PROJECT_ROOT)
+print(&quot;RUN_ROOT:&quot;, RUN_ROOT)
+print(&quot;DATA_DIR:&quot;, DATA_DIR)
+print(&quot;CACHE_DIR:&quot;, CACHE_DIR)
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">DEVICE: cpu
+SEED: 42
+Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount(&quot;/content/drive&quot;, force_remount=True).
+PROJECT_ROOT: /content/drive/MyDrive/RunPackageC_EMNIST_COCO
+RUN_ROOT: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202
+DATA_DIR: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/data
+CACHE_DIR: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/cache
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 4</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 2. Configuration
+@dataclass
+class BenchmarkSpec:
+    name: str
+    n_classes: int
+    train_max: int
+    val_max: int
+    test_max: int
+    label_names: tuple
+
+@dataclass
+class Cfg:
+    run_mode: str = &quot;final&quot;     # &quot;pilot&quot; or &quot;final&quot;
+    base_img_size: int = 64
+    electrode_grid: int = 16
+    percept_size: int = 32
+    phosphene_blur_sigma: float = 1.0
+
+    amp_min: float = 0.0
+    amp_max: float = 1.0
+    f_min: float = 10.0
+    f_max: float = 60.0
+    pw_min: float = 50e-6
+    pw_max: float = 500e-6
+
+    duty_max: float = 0.10
+    q_max: float = 0.015
+    k_max: int = 40
+
+    stress_levels: tuple = (0.0, 0.25, 0.50, 0.75, 1.00)
+
+    latent_dim: int = 64
+    epochs: int = 8
+    batch_size: int = 128
+    lr: float = 1e-3
+
+    tda_n: int = 300
+    tda_pca_dim: int = 10
+    tda_maxdim: int = 1
+
+    run_fuzzing: bool = True
+    fuzz_seed_images: int = 96
+    fuzz_iters: int = 60
+    fuzz_mutations_per_iter: int = 12
+
+cfg = Cfg()
+
+if cfg.run_mode == &quot;pilot&quot;:
+    BENCHMARKS = (
+        BenchmarkSpec(&quot;emnist_letters&quot;, 26, 10000, 2000, 2000, tuple([chr(ord(&#39;A&#39;) + i) for i in range(26)])),
+        BenchmarkSpec(&quot;coco_4cls&quot;, 4, 3200, 800, 800, (&quot;none&quot;, &quot;person&quot;, &quot;car&quot;, &quot;both&quot;)),
+    )
+    cfg.run_fuzzing = False
+    cfg.fuzz_seed_images = 64
+    cfg.fuzz_iters = 40
+    cfg.fuzz_mutations_per_iter = 10
+else:
+    BENCHMARKS = (
+        BenchmarkSpec(&quot;emnist_letters&quot;, 26, 20000, 3000, 3000, tuple([chr(ord(&#39;A&#39;) + i) for i in range(26)])),
+        BenchmarkSpec(&quot;coco_4cls&quot;, 4, 4000, 1000, 1000, (&quot;none&quot;, &quot;person&quot;, &quot;car&quot;, &quot;both&quot;)),
+    )
+    cfg.run_fuzzing = True
+    cfg.fuzz_seed_images = 128
+    cfg.fuzz_iters = 80
+    cfg.fuzz_mutations_per_iter = 16
+
+print(&quot;RUN MODE:&quot;, cfg.run_mode)
+for spec in BENCHMARKS:
+    print(spec)
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">RUN MODE: final
+BenchmarkSpec(name=&#39;emnist_letters&#39;, n_classes=26, train_max=20000, val_max=3000, test_max=3000, label_names=(&#39;A&#39;, &#39;B&#39;, &#39;C&#39;, &#39;D&#39;, &#39;E&#39;, &#39;F&#39;, &#39;G&#39;, &#39;H&#39;, &#39;I&#39;, &#39;J&#39;, &#39;K&#39;, &#39;L&#39;, &#39;M&#39;, &#39;N&#39;, &#39;O&#39;, &#39;P&#39;, &#39;Q&#39;, &#39;R&#39;, &#39;S&#39;, &#39;T&#39;, &#39;U&#39;, &#39;V&#39;, &#39;W&#39;, &#39;X&#39;, &#39;Y&#39;, &#39;Z&#39;))
+BenchmarkSpec(name=&#39;coco_4cls&#39;, n_classes=4, train_max=4000, val_max=1000, test_max=1000, label_names=(&#39;none&#39;, &#39;person&#39;, &#39;car&#39;, &#39;both&#39;))
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 5</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 3. Utility functions
+# seed_everything() and stable_seed() are defined in Cell 1.
+
+def benchmark_dirs(name: str):
+    root = ROOT / name
+    fig = root / &quot;figures&quot;; fig.mkdir(parents=True, exist_ok=True)
+    tab = root / &quot;tables&quot;;  tab.mkdir(parents=True, exist_ok=True)
+    cache = root / &quot;cache&quot;; cache.mkdir(parents=True, exist_ok=True)
+    model = root / &quot;models&quot;; model.mkdir(parents=True, exist_ok=True)
+    raw = root / &quot;raw&quot;; raw.mkdir(parents=True, exist_ok=True)
+    return {&quot;root&quot;: root, &quot;fig&quot;: fig, &quot;tab&quot;: tab, &quot;cache&quot;: cache, &quot;model&quot;: model, &quot;raw&quot;: raw}
+
+def stratified_trim_indices(y, n_total, seed=42):
+    y = np.asarray(y)
+    if n_total is None or n_total &gt;= len(y):
+        return np.arange(len(y))
+    frac = n_total / len(y)
+    idx = []
+    rng = np.random.RandomState(seed)
+    for c in np.unique(y):
+        c_idx = np.where(y == c)[0]
+        take = max(1, int(round(len(c_idx) * frac)))
+        take = min(take, len(c_idx))
+        idx.extend(rng.choice(c_idx, size=take, replace=False).tolist())
+    idx = np.array(idx, dtype=int)
+    if len(idx) &gt; n_total:
+        idx = rng.choice(idx, size=n_total, replace=False)
+    elif len(idx) &lt; n_total:
+        remain = np.setdiff1d(np.arange(len(y)), idx)
+        add = rng.choice(remain, size=n_total-len(idx), replace=False)
+        idx = np.concatenate([idx, add])
+    rng.shuffle(idx)
+    return idx
+
+def pil_to_gray_square(img: Image.Image, size: int = 64, invert: bool = False) -&gt; np.ndarray:
+    img = img.convert(&quot;L&quot;)
+    if invert:
+        img = ImageOps.invert(img)
+    w, h = img.size
+    scale = float(size) / max(w, h)
+    nw = max(1, int(round(w * scale)))
+    nh = max(1, int(round(h * scale)))
+    img = img.resize((nw, nh), Image.BILINEAR)
+    canvas = Image.new(&quot;L&quot;, (size, size), color=0)
+    left = (size - nw) // 2
+    top = (size - nh) // 2
+    canvas.paste(img, (left, top))
+    arr = np.asarray(canvas, dtype=np.uint8)
+    return arr
+
+def ensure_float01(x_uint8: np.ndarray) -&gt; np.ndarray:
+    if x_uint8.dtype == np.uint8:
+        return x_uint8.astype(np.float32) / 255.0
+    return x_uint8.astype(np.float32)
+
+def save_json(obj, path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2, ensure_ascii=False))
+
+def save_run_manifest(extra=None):
+    &quot;&quot;&quot;Save run-level metadata required for reproducibility and manuscript auditing.&quot;&quot;&quot;
+    manifest = {
+        &quot;run_id&quot;: RUN_ID,
+        &quot;seed&quot;: SEED,
+        &quot;device&quot;: DEVICE,
+        &quot;project_root&quot;: str(PROJECT_ROOT),
+        &quot;run_root&quot;: str(RUN_ROOT),
+        &quot;data_dir&quot;: str(DATA_DIR),
+        &quot;cache_dir&quot;: str(CACHE_DIR),
+        &quot;python&quot;: sys.version,
+        &quot;platform&quot;: platform.platform(),
+        &quot;numpy&quot;: np.__version__,
+        &quot;pandas&quot;: pd.__version__,
+        &quot;torch&quot;: torch.__version__,
+        &quot;cuda_available&quot;: bool(torch.cuda.is_available()),
+        &quot;cudnn_deterministic&quot;: bool(torch.backends.cudnn.deterministic),
+        &quot;cudnn_benchmark&quot;: bool(torch.backends.cudnn.benchmark),
+        &quot;hashseed_env&quot;: os.environ.get(&quot;PYTHONHASHSEED&quot;, None),
+    }
+    if extra:
+        manifest.update(extra)
+    save_json(manifest, SUMMARY_DIR / &quot;RunManifest.json&quot;)
+
+def save_cfg_and_benchmarks():
+    cfg_dict = asdict(cfg)
+    bench_list = [asdict(b) for b in BENCHMARKS]
+    save_json({&quot;cfg&quot;: cfg_dict, &quot;benchmarks&quot;: bench_list}, SUMMARY_DIR / &quot;Config_Benchmarks.json&quot;)
+
+def save_split_metadata(spec, data_dict, out_dirs):
+    rows = []
+    for split_key, label_key in [(&quot;train&quot;, &quot;y_tr&quot;), (&quot;val&quot;, &quot;y_va&quot;), (&quot;test&quot;, &quot;y_te&quot;)]:
+        y = np.asarray(data_dict[label_key])
+        vals, counts = np.unique(y, return_counts=True)
+        for v, c in zip(vals, counts):
+            rows.append({
+                &quot;benchmark&quot;: spec.name,
+                &quot;split&quot;: split_key,
+                &quot;class_id&quot;: int(v),
+                &quot;class_name&quot;: str(spec.label_names[int(v)]) if int(v) &lt; len(spec.label_names) else str(v),
+                &quot;count&quot;: int(c),
+            })
+    pd.DataFrame(rows).to_csv(out_dirs[&quot;tab&quot;] / &quot;Table0_SplitClassCounts.csv&quot;, index=False)
+
+    # Store labels and shapes as raw experimental metadata without duplicating all cached image arrays.
+    np.savez_compressed(
+        out_dirs[&quot;raw&quot;] / &quot;SplitLabels_And_Shapes.npz&quot;,
+        y_tr=np.asarray(data_dict[&quot;y_tr&quot;]),
+        y_va=np.asarray(data_dict[&quot;y_va&quot;]),
+        y_te=np.asarray(data_dict[&quot;y_te&quot;]),
+        X_tr_shape=np.asarray(data_dict[&quot;X_tr&quot;].shape),
+        X_va_shape=np.asarray(data_dict[&quot;X_va&quot;].shape),
+        X_te_shape=np.asarray(data_dict[&quot;X_te&quot;].shape),
+    )
+
+def finite_diag(diag: np.ndarray) -&gt; np.ndarray:
+    if diag is None or len(diag) == 0:
+        return np.zeros((0, 2), dtype=np.float32)
+    diag = np.asarray(diag, dtype=np.float32)
+    mask = np.isfinite(diag).all(axis=1)
+    return diag[mask]
+
+def safe_corr(a, b):
+    a = np.asarray(a); b = np.asarray(b)
+    if len(a) &lt; 2 or np.std(a) &lt; 1e-12 or np.std(b) &lt; 1e-12:
+        return np.nan
+    return float(np.corrcoef(a, b)[0, 1])
+
+def set_matplotlib_defaults():
+    plt.rcParams[&quot;figure.dpi&quot;] = 130
+    plt.rcParams[&quot;savefig.dpi&quot;] = 300
+    plt.rcParams[&quot;axes.grid&quot;] = True
+
+set_matplotlib_defaults()
+save_run_manifest()
+</code></pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 6</h2><div class="nb-md"><h2>Dataset loaders</h2>
+<p>이 notebook은 두 benchmark를 모두 다룬다.</p>
+<ul>
+<li><strong>EMNIST Letters</strong>: <code>torchvision.datasets.EMNIST(split=&quot;letters&quot;, download=True)</code>를 사용한다. Torchvision 문서상 EMNIST는 <code>letters</code>를 포함한 6개 split을 제공하며 <code>download=True</code>로 자동 다운로드할 수 있다. citeturn383191view0</li>
+<li><strong>COCO-derived subset</strong>: Hugging Face의 <code>detection-datasets/coco</code>를 streaming으로 읽어 class-balanced subset을 구성한다. 이 dataset viewer 기준으로 <code>train</code> 117k, <code>val</code> 4.95k rows를 가지며 <code>image</code>, <code>image_id</code>, <code>objects.category</code> 등의 필드를 제공한다. citeturn738435view0turn576606search2</li>
+</ul>
+</div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 7</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 4. Dataset loading
+COCO_PERSON_ID = 0
+COCO_CAR_ID = 2
+
+def emnist_to_numpy(dataset, indices, img_size=64):
+    X = np.empty((len(indices), img_size, img_size), dtype=np.uint8)
+    y = np.empty((len(indices),), dtype=np.int64)
+    for k, idx in enumerate(tqdm(indices, desc=&quot;EMNIST materialize&quot;, leave=False)):
+        img, label = dataset[int(idx)]   # PIL, label
+        arr = pil_to_gray_square(img, size=img_size, invert=False)
+        X[k] = arr
+        y[k] = int(label) - 1            # letters split labels are 1..26
+    return X, y
+
+def build_emnist_letters(spec: BenchmarkSpec, seed: int = 42):
+    cache_npz = CACHE_DIR / f&quot;{spec.name}_{spec.train_max}_{spec.val_max}_{spec.test_max}_s{seed}.npz&quot;
+    if cache_npz.exists():
+        z = np.load(cache_npz, allow_pickle=False)
+        return {
+            &quot;X_tr&quot;: z[&quot;X_tr&quot;], &quot;y_tr&quot;: z[&quot;y_tr&quot;],
+            &quot;X_va&quot;: z[&quot;X_va&quot;], &quot;y_va&quot;: z[&quot;y_va&quot;],
+            &quot;X_te&quot;: z[&quot;X_te&quot;], &quot;y_te&quot;: z[&quot;y_te&quot;],
+            &quot;label_names&quot;: np.array(spec.label_names),
+        }
+
+    ds_train = EMNIST(root=str(DATA_DIR), split=&quot;letters&quot;, train=True, download=True)
+    ds_test = EMNIST(root=str(DATA_DIR), split=&quot;letters&quot;, train=False, download=True)
+
+    y_train_full = np.array(ds_train.targets, dtype=np.int64) - 1
+    y_test_full = np.array(ds_test.targets, dtype=np.int64) - 1
+    idx_all = np.arange(len(y_train_full))
+
+    val_ratio = spec.val_max / max(1, (spec.train_max + spec.val_max))
+    idx_tr_full, idx_va_full = train_test_split(
+        idx_all, test_size=val_ratio, random_state=seed, stratify=y_train_full
+    )
+
+    idx_tr = stratified_trim_indices(y_train_full[idx_tr_full], spec.train_max, seed=seed)
+    idx_va = stratified_trim_indices(y_train_full[idx_va_full], spec.val_max, seed=seed)
+    idx_te = stratified_trim_indices(y_test_full, spec.test_max, seed=seed)
+
+    idx_tr = idx_tr_full[idx_tr]
+    idx_va = idx_va_full[idx_va]
+
+    X_tr, y_tr = emnist_to_numpy(ds_train, idx_tr, img_size=cfg.base_img_size)
+    X_va, y_va = emnist_to_numpy(ds_train, idx_va, img_size=cfg.base_img_size)
+    X_te, y_te = emnist_to_numpy(ds_test, idx_te, img_size=cfg.base_img_size)
+
+    np.savez_compressed(
+        cache_npz, X_tr=X_tr, y_tr=y_tr, X_va=X_va, y_va=y_va, X_te=X_te, y_te=y_te
+    )
+    return {
+        &quot;X_tr&quot;: X_tr, &quot;y_tr&quot;: y_tr,
+        &quot;X_va&quot;: X_va, &quot;y_va&quot;: y_va,
+        &quot;X_te&quot;: X_te, &quot;y_te&quot;: y_te,
+        &quot;label_names&quot;: np.array(spec.label_names),
+    }
+
+def coco_label_from_example(example) -&gt; int:
+    objs = example[&quot;objects&quot;]
+    if isinstance(objs, dict):
+        cats = objs.get(&quot;category&quot;, [])
+    elif isinstance(objs, list):
+        cats = [o.get(&quot;category&quot;) for o in objs]
+    else:
+        cats = []
+    cats = set(int(c) for c in cats)
+    has_person = COCO_PERSON_ID in cats
+    has_car = COCO_CAR_ID in cats
+    if has_person and has_car:
+        return 3
+    if has_person:
+        return 1
+    if has_car:
+        return 2
+    return 0
+
+def preprocess_coco_image(example, img_size=64):
+    img = example[&quot;image&quot;]
+    if not isinstance(img, Image.Image):
+        if isinstance(img, dict) and &quot;bytes&quot; in img and img[&quot;bytes&quot;] is not None:
+            img = Image.open(io.BytesIO(img[&quot;bytes&quot;]))
+        else:
+            raise TypeError(&quot;Unsupported COCO image type&quot;)
+    arr = pil_to_gray_square(img, size=img_size, invert=False)
+    return arr
+
+def _balanced_need(counts, target_per_class):
+    return any(counts[c] &lt; target_per_class[c] for c in sorted(target_per_class))
+
+def _choose_split_for_label(split_counts, quotas, label):
+    for split_name in (&quot;train&quot;, &quot;val&quot;, &quot;test&quot;):
+        if split_counts[split_name][label] &lt; quotas[split_name][label]:
+            return split_name
+    return None
+
+def build_coco_4cls(spec: BenchmarkSpec, seed: int = 42):
+    cache_npz = CACHE_DIR / f&quot;{spec.name}_{spec.train_max}_{spec.val_max}_{spec.test_max}_s{seed}.npz&quot;
+    manifest_json = CACHE_DIR / f&quot;{spec.name}_{spec.train_max}_{spec.val_max}_{spec.test_max}_manifest_s{seed}.json&quot;
+
+    if cache_npz.exists():
+        z = np.load(cache_npz, allow_pickle=False)
+        return {
+            &quot;X_tr&quot;: z[&quot;X_tr&quot;], &quot;y_tr&quot;: z[&quot;y_tr&quot;],
+            &quot;X_va&quot;: z[&quot;X_va&quot;], &quot;y_va&quot;: z[&quot;y_va&quot;],
+            &quot;X_te&quot;: z[&quot;X_te&quot;], &quot;y_te&quot;: z[&quot;y_te&quot;],
+            &quot;label_names&quot;: np.array(spec.label_names),
+        }
+
+    per_class_train = spec.train_max // spec.n_classes
+    per_class_val = spec.val_max // spec.n_classes
+    per_class_test = spec.test_max // spec.n_classes
+
+    quotas = {
+        &quot;train&quot;: {c: per_class_train for c in range(spec.n_classes)},
+        &quot;val&quot;:   {c: per_class_val   for c in range(spec.n_classes)},
+        &quot;test&quot;:  {c: per_class_test  for c in range(spec.n_classes)},
+    }
+
+    split_counts = {
+        &quot;train&quot;: defaultdict(int),
+        &quot;val&quot;: defaultdict(int),
+        &quot;test&quot;: defaultdict(int),
+    }
+
+    X_split = {&quot;train&quot;: [], &quot;val&quot;: [], &quot;test&quot;: []}
+    y_split = {&quot;train&quot;: [], &quot;val&quot;: [], &quot;test&quot;: []}
+    manifest = []
+
+    def all_full():
+        return all(
+            split_counts[s][c] &gt;= quotas[s][c]
+            for s in (&quot;train&quot;, &quot;val&quot;, &quot;test&quot;)
+            for c in range(spec.n_classes)
+        )
+
+    def consume_stream(split_name_hf: str, local_seed: int):
+        ds = load_dataset(&quot;detection-datasets/coco&quot;, split=split_name_hf, streaming=True)
+        ds = ds.shuffle(seed=local_seed, buffer_size=5000)
+
+        pbar = tqdm(ds, desc=f&quot;Build COCO subset from {split_name_hf}&quot;, total=None)
+        for ex in pbar:
+            label = coco_label_from_example(ex)
+            split_name = _choose_split_for_label(split_counts, quotas, label)
+
+            if split_name is None:
+                if all_full():
+                    break
+                continue
+
+            arr = preprocess_coco_image(ex, img_size=cfg.base_img_size)
+            X_split[split_name].append(arr)
+            y_split[split_name].append(label)
+            split_counts[split_name][label] += 1
+
+            manifest.append({
+                &quot;image_id&quot;: int(ex[&quot;image_id&quot;]) if &quot;image_id&quot; in ex else None,
+                &quot;source_split&quot;: split_name_hf,
+                &quot;assigned_split&quot;: split_name,
+                &quot;label&quot;: int(label),
+            })
+
+            info = &quot; | &quot;.join([
+                f&quot;{sp}:{[split_counts[sp][c] for c in range(spec.n_classes)]}&quot;
+                for sp in (&quot;train&quot;, &quot;val&quot;, &quot;test&quot;)
+            ])
+            pbar.set_postfix_str(info)
+
+            if all_full():
+                break
+
+    consume_stream(&quot;train&quot;, seed)
+
+    if not all_full():
+        used_extra = False
+        for extra_split in (&quot;validation&quot;, &quot;val&quot;):
+            try:
+                consume_stream(extra_split, seed + 1)
+                used_extra = True
+                if all_full():
+                    break
+            except Exception as e:
+                print(f&quot;[warn] could not use COCO split &#39;{extra_split}&#39;: {e}&quot;)
+        if not used_extra:
+            print(&quot;[warn] no secondary COCO split could be loaded; continuing with current counts&quot;)
+
+    for sp in (&quot;train&quot;, &quot;val&quot;, &quot;test&quot;):
+        got = len(X_split[sp])
+        expected = sum(quotas[sp].values())
+        if got != expected:
+            deficit = expected - got
+            per_class_now = [split_counts[sp][c] for c in range(spec.n_classes)]
+            raise RuntimeError(
+                f&quot;COCO subset build incomplete for {sp}: got {got}, expected {expected}, &quot;
+                f&quot;deficit={deficit}, per_class={per_class_now}&quot;
+            )
+
+    X_tr = np.stack(X_split[&quot;train&quot;], axis=0).astype(np.uint8)
+    y_tr = np.array(y_split[&quot;train&quot;], dtype=np.int64)
+    X_va = np.stack(X_split[&quot;val&quot;], axis=0).astype(np.uint8)
+    y_va = np.array(y_split[&quot;val&quot;], dtype=np.int64)
+    X_te = np.stack(X_split[&quot;test&quot;], axis=0).astype(np.uint8)
+    y_te = np.array(y_split[&quot;test&quot;], dtype=np.int64)
+
+    np.savez_compressed(
+        cache_npz,
+        X_tr=X_tr, y_tr=y_tr,
+        X_va=X_va, y_va=y_va,
+        X_te=X_te, y_te=y_te
+    )
+    save_json(manifest, manifest_json)
+
+    return {
+        &quot;X_tr&quot;: X_tr, &quot;y_tr&quot;: y_tr,
+        &quot;X_va&quot;: X_va, &quot;y_va&quot;: y_va,
+        &quot;X_te&quot;: X_te, &quot;y_te&quot;: y_te,
+        &quot;label_names&quot;: np.array(spec.label_names),
+    }
+
+def load_benchmark(spec: BenchmarkSpec, seed: int = 42):
+    if spec.name == &quot;emnist_letters&quot;:
+        return build_emnist_letters(spec, seed=seed)
+    elif spec.name == &quot;coco_4cls&quot;:
+        return build_coco_4cls(spec, seed=seed)
+    else:
+        raise ValueError(spec.name)
+</code></pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 8</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 5. Stress model
+def _clip01(img):
+    return np.clip(img, 0.0, 1.0)
+
+def stress_clean(img, level):
+    return img
+
+def stress_gaussian_noise(img, level, sigma_max=0.6):
+    sigma = sigma_max * level
+    noise = np.random.normal(0.0, sigma, size=img.shape).astype(np.float32)
+    return _clip01(img + noise)
+
+def stress_blur(img, level, sigma_max=1.5):
+    sigma = sigma_max * level
+    if sigma &lt;= 0:
+        return img
+    return _clip01(gaussian_filter(img, sigma=sigma))
+
+def stress_dropout(img, level):
+    p = 0.6 * level
+    mask = (np.random.rand(*img.shape) &gt; p).astype(np.float32)
+    return _clip01(img * mask)
+
+def stress_occlusion(img, level):
+    if level &lt;= 0:
+        return img
+    h, w = img.shape
+    frac = 0.6 * level
+    ph, pw = max(1, int(h * frac)), max(1, int(w * frac))
+    i0 = np.random.randint(0, h - ph + 1)
+    j0 = np.random.randint(0, w - pw + 1)
+    out = img.copy()
+    out[i0:i0+ph, j0:j0+pw] = 0.0
+    return out
+
+STRESS_OPS = {
+    &quot;clean&quot;: stress_clean,
+    &quot;noise&quot;: stress_gaussian_noise,
+    &quot;blur&quot;: stress_blur,
+    &quot;dropout&quot;: stress_dropout,
+    &quot;occlusion&quot;: stress_occlusion,
+}
+LEVELS = list(cfg.stress_levels)
+print(&quot;Stress ops:&quot;, list(STRESS_OPS.keys()))
+print(&quot;Stress levels:&quot;, LEVELS)
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">Stress ops: [&#39;clean&#39;, &#39;noise&#39;, &#39;blur&#39;, &#39;dropout&#39;, &#39;occlusion&#39;]
+Stress levels: [0.0, 0.25, 0.5, 0.75, 1.0]
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 9</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 6. Stimulation model, safety constraints, and encoders
+@dataclass
+class Stimulus:
+    amp: np.ndarray
+    f_hz: float
+    pw_s: float
+
+def project_stimulus_to_bounds(stim: Stimulus) -&gt; Stimulus:
+    amp = np.clip(stim.amp, cfg.amp_min, cfg.amp_max)
+    f = float(np.clip(stim.f_hz, cfg.f_min, cfg.f_max))
+    pw = float(np.clip(stim.pw_s, cfg.pw_min, cfg.pw_max))
+    return Stimulus(amp=amp, f_hz=f, pw_s=pw)
+
+def enforce_sparsity(amp: np.ndarray, k_max: int) -&gt; np.ndarray:
+    flat = amp.reshape(-1)
+    if k_max is None or k_max &lt;= 0:
+        return np.zeros_like(amp)
+    nz = np.count_nonzero(flat &gt; 1e-12)
+    if nz &lt;= k_max:
+        return amp
+    thr = np.partition(flat, -k_max)[-k_max]
+    out = amp.copy()
+    out[out &lt; thr] = 0.0
+    return out
+
+def compute_constraints(stim: Stimulus):
+    duty = float(stim.f_hz * stim.pw_s)
+    q_total = float(stim.amp.sum() * stim.f_hz * stim.pw_s)
+    active = int(np.count_nonzero(stim.amp &gt; 1e-12))
+    return {&quot;duty&quot;: duty, &quot;q_total&quot;: q_total, &quot;active&quot;: active}
+
+def compute_severity(stim: Stimulus):
+    c = compute_constraints(stim)
+    sev_duty = max(0.0, (c[&quot;duty&quot;] - cfg.duty_max) / (cfg.duty_max + 1e-12))
+    sev_q = max(0.0, (c[&quot;q_total&quot;] - cfg.q_max) / (cfg.q_max + 1e-12))
+    sev_k = max(0.0, (c[&quot;active&quot;] - cfg.k_max) / (cfg.k_max + 1e-12))
+    sev = max(sev_duty, sev_q, sev_k)
+    return {
+        **c,
+        &quot;severity&quot;: float(sev),
+        &quot;violation&quot;: int(sev &gt; 0),
+        &quot;sev_duty&quot;: float(sev_duty),
+        &quot;sev_charge&quot;: float(sev_q),
+        &quot;sev_sparsity&quot;: float(sev_k),
+    }
+
+def project_to_safe(stim: Stimulus) -&gt; Stimulus:
+    stim = project_stimulus_to_bounds(stim)
+
+    if stim.f_hz * stim.pw_s &gt; cfg.duty_max:
+        pw = min(stim.pw_s, cfg.duty_max / (stim.f_hz + 1e-12))
+        stim = Stimulus(stim.amp, stim.f_hz, pw)
+
+    amp = enforce_sparsity(stim.amp, cfg.k_max)
+    stim = Stimulus(amp, stim.f_hz, stim.pw_s)
+
+    c = compute_constraints(stim)
+    if c[&quot;q_total&quot;] &gt; cfg.q_max and c[&quot;q_total&quot;] &gt; 0:
+        scale = cfg.q_max / c[&quot;q_total&quot;]
+        stim = Stimulus(stim.amp * scale, stim.f_hz, stim.pw_s)
+
+    return project_stimulus_to_bounds(stim)
+
+def resize_to_grid(img: np.ndarray, E: int) -&gt; np.ndarray:
+    h, w = img.shape
+    ys = np.linspace(0, h - 1, E)
+    xs = np.linspace(0, w - 1, E)
+    yy, xx = np.meshgrid(ys, xs, indexing=&quot;ij&quot;)
+    y0 = np.floor(yy).astype(int); x0 = np.floor(xx).astype(int)
+    y1 = np.clip(y0 + 1, 0, h - 1); x1 = np.clip(x0 + 1, 0, w - 1)
+    wy = yy - y0; wx = xx - x0
+    Ia = img[y0, x0]; Ib = img[y1, x0]; Ic = img[y0, x1]; Id = img[y1, x1]
+    out = (1-wy)*(1-wx)*Ia + wy*(1-wx)*Ib + (1-wy)*wx*Ic + wy*wx*Id
+    return out.astype(np.float32)
+
+def phosphene_simulator(stim: Stimulus) -&gt; np.ndarray:
+    E = stim.amp.shape[0]
+    P = cfg.percept_size
+    scale = max(1, int(math.ceil(P / E)))
+    amp_up = np.kron(stim.amp, np.ones((scale, scale), dtype=np.float32))
+    amp_up = amp_up[:P, :P]
+    percept = gaussian_filter(amp_up, sigma=cfg.phosphene_blur_sigma)
+    gain = (stim.f_hz / cfg.f_max) * (stim.pw_s / cfg.pw_max)
+    percept = np.clip(percept * (0.5 + gain), 0.0, 1.0)
+    return percept.astype(np.float32)
+
+def _base_fp(img: np.ndarray):
+    m = float(img.mean())
+    f = cfg.f_min + (cfg.f_max - cfg.f_min) * m
+    pw = min(cfg.pw_max, cfg.duty_max / (f + 1e-12))
+    pw = max(cfg.pw_min, pw)
+    return f, pw
+
+def greedy_diverse_topk(score_grid: np.ndarray, k: int, min_sep: int = 2):
+    E = score_grid.shape[0]
+    coords = [(i, j) for i in range(E) for j in range(E)]
+    coords = sorted(coords, key=lambda ij: score_grid[ij[0], ij[1]], reverse=True)
+    picked = []
+    for i, j in coords:
+        if len(picked) &gt;= k:
+            break
+        if all(abs(pi - i) + abs(pj - j) &gt;= min_sep for pi, pj in picked):
+            picked.append((i, j))
+    return picked
+
+def encoder_rate(img: np.ndarray) -&gt; Stimulus:
+    amp = resize_to_grid(img, cfg.electrode_grid)
+    amp = cfg.amp_min + (cfg.amp_max - cfg.amp_min) * amp
+    f, pw = _base_fp(img)
+    return project_to_safe(Stimulus(amp=amp, f_hz=f, pw_s=pw))
+
+def encoder_sparse_diverse(img: np.ndarray) -&gt; Stimulus:
+    g = resize_to_grid(img, cfg.electrode_grid)
+    picked = greedy_diverse_topk(g, k=cfg.k_max, min_sep=2)
+    amp = np.zeros_like(g, dtype=np.float32)
+    for i, j in picked:
+        amp[i, j] = g[i, j]
+    amp = cfg.amp_min + (cfg.amp_max - cfg.amp_min) * amp
+    f, pw = _base_fp(img)
+    return project_to_safe(Stimulus(amp=amp, f_hz=f, pw_s=pw))
+
+def encoder_temporal_latency(img: np.ndarray, tau_t: float = 0.25) -&gt; Stimulus:
+    g = resize_to_grid(img, cfg.electrode_grid)
+    flat = g.reshape(-1)
+    if np.count_nonzero(flat) &gt; cfg.k_max:
+        thr = np.partition(flat, -cfg.k_max)[-cfg.k_max]
+    else:
+        thr = 0.0
+    mask = (g &gt;= thr).astype(np.float32)
+    latency = (1.0 - g) * mask
+    eff = np.exp(-latency / max(tau_t, 1e-6)) * mask
+    eff = eff / (eff.max() + 1e-8)
+    amp = 0.8 * cfg.amp_max * eff
+    f, pw = _base_fp(img)
+    return project_to_safe(Stimulus(amp=amp, f_hz=f, pw_s=pw))
+
+def encoder_optimization(img: np.ndarray, lam: float = 0.08, steps: int = 20, lr: float = 0.5) -&gt; Stimulus:
+    target = resize_to_grid(img, cfg.electrode_grid)
+    x = target.copy()
+    for _ in range(steps):
+        x = x - lr * 2.0 * (x - target)
+        x = np.sign(x) * np.maximum(np.abs(x) - lam, 0.0)
+        x = np.clip(x, 0.0, 1.0)
+        x = enforce_sparsity(x, cfg.k_max)
+    amp = cfg.amp_min + (cfg.amp_max - cfg.amp_min) * x
+    f, pw = _base_fp(img)
+    return project_to_safe(Stimulus(amp=amp, f_hz=f, pw_s=pw))
+
+ENCODERS = {
+    &quot;rate&quot;: encoder_rate,
+    &quot;sparse&quot;: encoder_sparse_diverse,
+    &quot;temporal&quot;: encoder_temporal_latency,
+    &quot;optim&quot;: encoder_optimization,
+}
+ENCODER_NAMES = list(ENCODERS.keys())
+print(&quot;Encoders:&quot;, ENCODER_NAMES)
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">Encoders: [&#39;rate&#39;, &#39;sparse&#39;, &#39;temporal&#39;, &#39;optim&#39;]
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 10</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 7. Decoder model and clean percept building
+class PerceptDataset(Dataset):
+    def __init__(self, percepts: np.ndarray, labels: np.ndarray):
+        self.X = percepts.astype(np.float32)
+        self.y = labels.astype(np.int64)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        x = self.X[idx][None, :, :]
+        y = self.y[idx]
+        return torch.from_numpy(x), torch.tensor(y, dtype=torch.long)
+
+class DecoderNet(nn.Module):
+    def __init__(self, latent_dim: int, n_classes: int):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(1, 16, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(16, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        feat_hw = cfg.percept_size // 4
+        self.fc1 = nn.Linear(32 * feat_hw * feat_hw, latent_dim)
+        self.fc2 = nn.Linear(latent_dim, n_classes)
+
+    def forward(self, x):
+        h = self.conv(x)
+        h = h.flatten(1)
+        z = torch.relu(self.fc1(h))
+        logits = self.fc2(z)
+        return logits, z
+
+def build_percepts(images_uint8: np.ndarray, encoder_name: str, op_name: str = &quot;clean&quot;, level: float = 0.0):
+    enc = ENCODERS[encoder_name]
+    op = STRESS_OPS[op_name]
+    percepts = []
+    stims = []
+    severities = []
+    for img_u8 in images_uint8:
+        img = ensure_float01(img_u8)
+        img_s = op(img, level)
+        stim = enc(img_s)
+        sev = compute_severity(stim)
+        percept = phosphene_simulator(stim)
+        percepts.append(percept)
+        stims.append(stim)
+        severities.append(sev)
+    return np.stack(percepts, axis=0), stims, severities
+
+@torch.no_grad()
+def decoder_predict(model: nn.Module, percepts: np.ndarray, batch_size: int = 256):
+    preds = []
+    zs = []
+    model.eval()
+    for i in range(0, len(percepts), batch_size):
+        xb = torch.from_numpy(percepts[i:i+batch_size, None, :, :]).to(DEVICE)
+        logits, z = model(xb)
+        preds.append(logits.argmax(dim=1).cpu().numpy())
+        zs.append(z.cpu().numpy())
+    return np.concatenate(preds), np.concatenate(zs)
+
+def train_shared_decoder(data_dict, n_classes: int, out_model_path: Path, seed: int = SEED):
+    seed_everything(seed)
+    X_tr = data_dict[&quot;X_tr&quot;]; y_tr = data_dict[&quot;y_tr&quot;]
+    X_va = data_dict[&quot;X_va&quot;]; y_va = data_dict[&quot;y_va&quot;]
+
+    percepts_tr = []
+    labels_tr = []
+    percepts_va = []
+    labels_va = []
+
+    for en in ENCODER_NAMES:
+        P_tr, _, _ = build_percepts(X_tr, en, &quot;clean&quot;, 0.0)
+        P_va, _, _ = build_percepts(X_va, en, &quot;clean&quot;, 0.0)
+        percepts_tr.append(P_tr); labels_tr.append(y_tr)
+        percepts_va.append(P_va); labels_va.append(y_va)
+
+    percepts_tr = np.concatenate(percepts_tr, axis=0)
+    labels_tr = np.concatenate(labels_tr, axis=0)
+    percepts_va = np.concatenate(percepts_va, axis=0)
+    labels_va = np.concatenate(labels_va, axis=0)
+
+    loader_gen = torch.Generator()
+    loader_gen.manual_seed(seed)
+    train_loader = DataLoader(
+        PerceptDataset(percepts_tr, labels_tr),
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        generator=loader_gen,
+        num_workers=0,
+    )
+    val_loader = DataLoader(
+        PerceptDataset(percepts_va, labels_va),
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=0,
+    )
+
+    model = DecoderNet(latent_dim=cfg.latent_dim, n_classes=n_classes).to(DEVICE)
+    opt = torch.optim.Adam(model.parameters(), lr=cfg.lr)
+
+    def eval_loader(loader):
+        model.eval()
+        total = 0
+        correct = 0
+        loss_sum = 0.0
+        with torch.no_grad():
+            for xb, yb in loader:
+                xb = xb.to(DEVICE); yb = yb.to(DEVICE)
+                logits, _ = model(xb)
+                loss = F.cross_entropy(logits, yb)
+                pred = logits.argmax(dim=1)
+                total += int(yb.numel())
+                correct += int((pred == yb).sum().item())
+                loss_sum += float(loss.item()) * int(yb.numel())
+        return {&quot;acc&quot;: correct / max(1, total), &quot;loss&quot;: loss_sum / max(1, total)}
+
+    hist = []
+    for ep in range(1, cfg.epochs + 1):
+        model.train()
+        for xb, yb in train_loader:
+            xb = xb.to(DEVICE); yb = yb.to(DEVICE)
+            logits, _ = model(xb)
+            loss = F.cross_entropy(logits, yb)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+        mtr = eval_loader(train_loader)
+        mva = eval_loader(val_loader)
+        hist.append({&quot;epoch&quot;: ep, &quot;train_acc&quot;: mtr[&quot;acc&quot;], &quot;val_acc&quot;: mva[&quot;acc&quot;], &quot;train_loss&quot;: mtr[&quot;loss&quot;], &quot;val_loss&quot;: mva[&quot;loss&quot;]})
+        print(f&quot;Epoch {ep:02d}/{cfg.epochs} | train acc {mtr[&#39;acc&#39;]:.3f} | val acc {mva[&#39;acc&#39;]:.3f}&quot;)
+
+    torch.save({&quot;model_state&quot;: model.state_dict(), &quot;history&quot;: hist, &quot;n_classes&quot;: n_classes}, out_model_path)
+
+    for p in model.parameters():
+        p.requires_grad = False
+    model.eval()
+    return model, pd.DataFrame(hist)
+</code></pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 11</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 8. Core evaluation functions (stress / topology / tri-objective / fuzzing)
+def save_method_tables(spec, out_dirs):
+    table1 = pd.DataFrame([
+        {&quot;Encoder&quot;: &quot;rate&quot;, &quot;Principle&quot;: &quot;rate-based amplitude mapping&quot;, &quot;Key knobs&quot;: &quot;global f,pw from input statistics; amplitude proportional to intensity&quot;},
+        {&quot;Encoder&quot;: &quot;sparse&quot;, &quot;Principle&quot;: &quot;sparse electrode selection with diversity constraint&quot;, &quot;Key knobs&quot;: &quot;k_max, min_sep; amplitude on selected electrodes&quot;},
+        {&quot;Encoder&quot;: &quot;temporal&quot;, &quot;Principle&quot;: &quot;latency modulation plus time-weighted integration&quot;, &quot;Key knobs&quot;: &quot;tau_t, k_max; latency-weighted amplitude&quot;},
+        {&quot;Encoder&quot;: &quot;optim&quot;, &quot;Principle&quot;: &quot;constrained optimization with sparsity regularization&quot;, &quot;Key knobs&quot;: &quot;lam, steps; projection to feasible space&quot;},
+    ])
+    table1.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table1_EncodingStrategies.csv&quot;, index=False)
+
+    table2 = pd.DataFrame([
+        {&quot;Constraint&quot;: &quot;Duty&quot;, &quot;Condition&quot;: &quot;f_hz * pw_s &lt;= duty_max&quot;, &quot;Severity&quot;: &quot;max(0, (duty - duty_max)/duty_max)&quot;, &quot;Param&quot;: cfg.duty_max},
+        {&quot;Constraint&quot;: &quot;Charge (proxy)&quot;, &quot;Condition&quot;: &quot;sum(amp) * f_hz * pw_s &lt;= q_max&quot;, &quot;Severity&quot;: &quot;max(0, (Q - q_max)/q_max)&quot;, &quot;Param&quot;: cfg.q_max},
+        {&quot;Constraint&quot;: &quot;Sparsity&quot;, &quot;Condition&quot;: &quot;active_electrodes &lt;= k_max&quot;, &quot;Severity&quot;: &quot;max(0, (active - k_max)/k_max)&quot;, &quot;Param&quot;: cfg.k_max},
+    ])
+    table2.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table2_SafetyConstraints_SeverityDefinitions.csv&quot;, index=False)
+
+    table4_1 = pd.DataFrame([
+        {&quot;Category&quot;: &quot;Benchmark A&quot;, &quot;Item&quot;: &quot;EMNIST Letters&quot;, &quot;Specification&quot;: f&quot;{spec.name == &#39;emnist_letters&#39;}&quot;},
+    ])
+    # manuscript-oriented summary
+    summary_rows = [
+        {&quot;Category&quot;: &quot;Benchmark&quot;, &quot;Item&quot;: &quot;name&quot;, &quot;Specification&quot;: spec.name},
+        {&quot;Category&quot;: &quot;Benchmark&quot;, &quot;Item&quot;: &quot;n_classes&quot;, &quot;Specification&quot;: spec.n_classes},
+        {&quot;Category&quot;: &quot;Benchmark&quot;, &quot;Item&quot;: &quot;split&quot;, &quot;Specification&quot;: f&quot;{spec.train_max}/{spec.val_max}/{spec.test_max}&quot;},
+        {&quot;Category&quot;: &quot;Preprocessing&quot;, &quot;Item&quot;: &quot;input normalization&quot;, &quot;Specification&quot;: &quot;[0,1] grayscale&quot;},
+        {&quot;Category&quot;: &quot;Preprocessing&quot;, &quot;Item&quot;: &quot;electrode grid&quot;, &quot;Specification&quot;: f&quot;{cfg.electrode_grid}x{cfg.electrode_grid}&quot;},
+        {&quot;Category&quot;: &quot;Preprocessing&quot;, &quot;Item&quot;: &quot;percept size&quot;, &quot;Specification&quot;: f&quot;{cfg.percept_size}x{cfg.percept_size}&quot;},
+        {&quot;Category&quot;: &quot;Stress&quot;, &quot;Item&quot;: &quot;operators&quot;, &quot;Specification&quot;: &quot;, &quot;.join(STRESS_OPS.keys())},
+        {&quot;Category&quot;: &quot;Stress&quot;, &quot;Item&quot;: &quot;levels&quot;, &quot;Specification&quot;: &quot;, &quot;.join([str(v) for v in LEVELS])},
+    ]
+    pd.DataFrame(summary_rows).to_csv(out_dirs[&quot;tab&quot;] / &quot;Table4_1_BenchmarkConfig.csv&quot;, index=False)
+
+def save_decoder_table(out_dirs, n_classes):
+    table3 = pd.DataFrame([{
+        &quot;decoder&quot;: &quot;CNN(1-16-32) + FC(latent_dim) + Linear&quot;,
+        &quot;n_classes&quot;: n_classes,
+        &quot;percept_size&quot;: cfg.percept_size,
+        &quot;latent_dim&quot;: cfg.latent_dim,
+        &quot;epochs&quot;: cfg.epochs,
+        &quot;batch_size&quot;: cfg.batch_size,
+        &quot;lr&quot;: cfg.lr,
+        &quot;training_protocol&quot;: &quot;benchmark-specific shared decoder; clean percepts pooled across encoders; trained once then fixed&quot;,
+    }])
+    table3.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table3_DecoderConfig.csv&quot;, index=False)
+
+def evaluate_stress_sweep(model, data_dict, out_dirs):
+    X_te = data_dict[&quot;X_te&quot;]; y_te = data_dict[&quot;y_te&quot;]
+
+    rows = []
+    for encoder_name in ENCODER_NAMES:
+        for op_name in STRESS_OPS.keys():
+            for level in LEVELS:
+                percepts, stims, severities = build_percepts(X_te, encoder_name, op_name, level)
+                preds, _ = decoder_predict(model, percepts)
+                acc = float((preds == y_te).mean())
+                max_sev = float(np.max([d[&quot;severity&quot;] for d in severities]))
+                mean_sev = float(np.mean([d[&quot;severity&quot;] for d in severities]))
+                viol_rate = float(np.mean([d[&quot;violation&quot;] for d in severities]))
+                rows.append({
+                    &quot;encoder&quot;: encoder_name,
+                    &quot;op&quot;: op_name,
+                    &quot;level&quot;: float(level),
+                    &quot;accuracy&quot;: acc,
+                    &quot;max_severity&quot;: max_sev,
+                    &quot;mean_severity&quot;: mean_sev,
+                    &quot;violation_rate&quot;: viol_rate,
+                })
+
+    df = pd.DataFrame(rows)
+    df.to_csv(out_dirs[&quot;tab&quot;] / &quot;TableStress_PerfSafety_ByEncoderOpLevel.csv&quot;, index=False)
+
+    # Table 4 / Table 5
+    clean = df[(df.op == &quot;clean&quot;) &amp; (df.level == 0.0)].copy()
+    clean = clean[[&quot;encoder&quot;, &quot;accuracy&quot;, &quot;max_severity&quot;, &quot;mean_severity&quot;, &quot;violation_rate&quot;]]
+    clean.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table4_Clean_PerfSafety.csv&quot;, index=False)
+
+    worst_rows = []
+    for enc in ENCODER_NAMES:
+        d = df[df.encoder == enc].copy()
+        r_acc = d.loc[d[&quot;accuracy&quot;].idxmin()]
+        r_sev = d.loc[d[&quot;max_severity&quot;].idxmax()]
+        worst_rows.append({
+            &quot;encoder&quot;: enc,
+            &quot;worst_accuracy&quot;: float(r_acc[&quot;accuracy&quot;]),
+            &quot;worst_accuracy_op&quot;: r_acc[&quot;op&quot;],
+            &quot;worst_accuracy_level&quot;: float(r_acc[&quot;level&quot;]),
+            &quot;worst_max_severity&quot;: float(r_sev[&quot;max_severity&quot;]),
+            &quot;worst_severity_op&quot;: r_sev[&quot;op&quot;],
+            &quot;worst_severity_level&quot;: float(r_sev[&quot;level&quot;]),
+        })
+    pd.DataFrame(worst_rows).to_csv(out_dirs[&quot;tab&quot;] / &quot;Table5_Worst_PerfSafety.csv&quot;, index=False)
+
+    # Fig 3: Accuracy vs Level
+    plt.figure(figsize=(8, 5))
+    for enc in ENCODER_NAMES:
+        d = df[(df.encoder == enc) &amp; (df.op != &quot;clean&quot;)].copy()
+        agg = d.groupby(&quot;level&quot;, as_index=False)[&quot;accuracy&quot;].mean()
+        plt.plot(agg[&quot;level&quot;], agg[&quot;accuracy&quot;], marker=&quot;o&quot;, label=enc)
+    plt.xlabel(&quot;Stress level&quot;)
+    plt.ylabel(&quot;Accuracy&quot;)
+    plt.title(&quot;Accuracy vs stress level&quot;)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig3_Accuracy_vs_Level.png&quot;)
+    plt.close()
+
+    # Fig 4: Severity vs Level
+    plt.figure(figsize=(8, 5))
+    for enc in ENCODER_NAMES:
+        d = df[(df.encoder == enc) &amp; (df.op != &quot;clean&quot;)].copy()
+        agg = d.groupby(&quot;level&quot;, as_index=False)[&quot;max_severity&quot;].mean()
+        plt.plot(agg[&quot;level&quot;], agg[&quot;max_severity&quot;], marker=&quot;o&quot;, label=enc)
+    plt.xlabel(&quot;Stress level&quot;)
+    plt.ylabel(&quot;Safety-violation severity&quot;)
+    plt.title(&quot;Severity vs stress level&quot;)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig4_Severity_vs_Level.png&quot;)
+    plt.close()
+
+    return df
+
+def _diag_distance(dgm_a, dgm_b):
+    if not HAS_RIPSER:
+        return float(np.linalg.norm(np.mean(dgm_a, axis=0) - np.mean(dgm_b, axis=0))) if len(dgm_a) and len(dgm_b) else 0.0
+    da = finite_diag(dgm_a)
+    db = finite_diag(dgm_b)
+    if len(da) == 0 and len(db) == 0:
+        return 0.0
+    if len(da) == 0:
+        da = np.zeros((1, 2), dtype=np.float32)
+    if len(db) == 0:
+        db = np.zeros((1, 2), dtype=np.float32)
+    return float(bottleneck(da, db))
+
+def _compute_diagrams(points: np.ndarray):
+    if not HAS_RIPSER:
+        return [np.zeros((0, 2), dtype=np.float32), np.zeros((0, 2), dtype=np.float32)]
+    result = ripser(points, maxdim=cfg.tda_maxdim)
+    dgms = result[&quot;dgms&quot;]
+    if len(dgms) == 1:
+        dgms = [dgms[0], np.zeros((0, 2), dtype=np.float32)]
+    return dgms[:2]
+
+def get_representations(model, images_uint8, encoder_name, op_name, level):
+    percepts, _, _ = build_percepts(images_uint8, encoder_name, op_name, level)
+    _, z = decoder_predict(model, percepts)
+    return z
+
+def run_topology_analysis(model, data_dict, out_dirs):
+    X_te = data_dict[&quot;X_te&quot;]
+    n_use = min(cfg.tda_n, len(X_te))
+    X_sub = X_te[:n_use]
+
+    rows = []
+    diag_cache = {}
+
+    for enc in ENCODER_NAMES:
+        Z0 = get_representations(model, X_sub, enc, &quot;clean&quot;, 0.0)
+        pca = PCA(n_components=min(cfg.tda_pca_dim, Z0.shape[1]), random_state=SEED).fit(Z0)
+        P0 = pca.transform(Z0)
+        dg0_h0, dg0_h1 = _compute_diagrams(P0)
+        diag_cache[(enc, &quot;clean&quot;, 0.0)] = (dg0_h0, dg0_h1)
+
+        dists = []
+        tmp = []
+        for op_name in STRESS_OPS.keys():
+            for level in LEVELS:
+                Z = get_representations(model, X_sub, enc, op_name, level)
+                P = pca.transform(Z)
+                dgh0, dgh1 = _compute_diagrams(P)
+                diag_cache[(enc, op_name, float(level))] = (dgh0, dgh1)
+                dist_h0 = _diag_distance(dg0_h0, dgh0)
+                dist_h1 = _diag_distance(dg0_h1, dgh1)
+                dist = dist_h0 + dist_h1
+                dists.append(dist)
+                tmp.append((enc, op_name, float(level), dist_h0, dist_h1, dist))
+        tau = np.median([d for d in dists if d &gt; 1e-12]) if np.any(np.array(dists) &gt; 1e-12) else 1.0
+        for enc_, op_name, level, dist_h0, dist_h1, dist in tmp:
+            tsi = float(np.exp(-dist / max(tau, 1e-8)))
+            rows.append({
+                &quot;encoder&quot;: enc_,
+                &quot;op&quot;: op_name,
+                &quot;level&quot;: level,
+                &quot;dist_h0&quot;: dist_h0,
+                &quot;dist_h1&quot;: dist_h1,
+                &quot;topo_dist&quot;: dist,
+                &quot;TSI&quot;: tsi,
+                &quot;tau_scale&quot;: tau,
+            })
+
+    df_tda = pd.DataFrame(rows)
+    df_tda.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table8_TDA_TopologyMetrics.csv&quot;, index=False)
+
+    # Representative persistence diagrams
+    fig, axes = plt.subplots(2, len(ENCODER_NAMES), figsize=(4*len(ENCODER_NAMES), 8))
+    for j, enc in enumerate(ENCODER_NAMES):
+        axes[0, j].set_title(f&quot;{enc} clean&quot;)
+        dg0_h0, dg0_h1 = diag_cache[(enc, &quot;clean&quot;, 0.0)]
+        if len(finite_diag(dg0_h0)):
+            axes[0, j].scatter(finite_diag(dg0_h0)[:,0], finite_diag(dg0_h0)[:,1], s=8, label=&quot;H0&quot;)
+        if len(finite_diag(dg0_h1)):
+            axes[0, j].scatter(finite_diag(dg0_h1)[:,0], finite_diag(dg0_h1)[:,1], s=8, label=&quot;H1&quot;)
+        axes[0, j].set_xlabel(&quot;birth&quot;); axes[0, j].set_ylabel(&quot;death&quot;)
+        d_enc = df_tda[df_tda.encoder == enc].copy()
+        d_enc = d_enc[(d_enc.op != &quot;clean&quot;)]
+        if len(d_enc):
+            worst = d_enc.loc[d_enc[&quot;topo_dist&quot;].idxmax()]
+            dgh0, dgh1 = diag_cache[(enc, worst[&quot;op&quot;], float(worst[&quot;level&quot;]))]
+            axes[1, j].set_title(f&quot;{enc} stressed ({worst[&#39;op&#39;]}, {worst[&#39;level&#39;]})&quot;)
+            if len(finite_diag(dgh0)):
+                axes[1, j].scatter(finite_diag(dgh0)[:,0], finite_diag(dgh0)[:,1], s=8, label=&quot;H0&quot;)
+            if len(finite_diag(dgh1)):
+                axes[1, j].scatter(finite_diag(dgh1)[:,0], finite_diag(dgh1)[:,1], s=8, label=&quot;H1&quot;)
+            axes[1, j].set_xlabel(&quot;birth&quot;); axes[1, j].set_ylabel(&quot;death&quot;)
+    for ax in axes.ravel():
+        lim = ax.get_xlim()[1]
+        if np.isfinite(lim):
+            ax.plot([0, lim], [0, lim], linewidth=1)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc=&quot;upper right&quot;)
+    fig.tight_layout()
+    fig.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig8_Persistence_Diagrams.png&quot;)
+    plt.close(fig)
+
+    # Fig 9
+    plt.figure(figsize=(8, 5))
+    for enc in ENCODER_NAMES:
+        d = df_tda[(df_tda.encoder == enc) &amp; (df_tda.op != &quot;clean&quot;)].copy()
+        agg = d.groupby(&quot;level&quot;, as_index=False)[&quot;TSI&quot;].mean()
+        plt.plot(agg[&quot;level&quot;], agg[&quot;TSI&quot;], marker=&quot;o&quot;, label=enc)
+    plt.xlabel(&quot;Stress level&quot;)
+    plt.ylabel(&quot;Representation stability (TSI)&quot;)
+    plt.title(&quot;TSI vs stress level&quot;)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig9_TSI_vs_Level.png&quot;)
+    plt.close()
+
+    return df_tda
+
+def run_triobjective(df_stress, df_tda, out_dirs):
+    df_join = df_stress.merge(df_tda, on=[&quot;encoder&quot;,&quot;op&quot;,&quot;level&quot;], how=&quot;inner&quot;)
+    df_nonclean = df_join[df_join.op != &quot;clean&quot;].copy()
+
+    corr_rows = []
+    summary_rows = []
+
+    delta = LEVELS[1] - LEVELS[0] if len(LEVELS) &gt; 1 else 1.0
+    lam_P, lam_R, lam_S = 1.0, 1.0, 1.0
+
+    for enc in ENCODER_NAMES:
+        d = df_nonclean[df_nonclean.encoder == enc].copy()
+        if len(d) == 0:
+            continue
+        corr_rows.append({
+            &quot;encoder&quot;: enc,
+            &quot;corr_TSI_Acc&quot;: safe_corr(d[&quot;TSI&quot;], d[&quot;accuracy&quot;]),
+            &quot;corr_TSI_Sev&quot;: safe_corr(d[&quot;TSI&quot;], d[&quot;max_severity&quot;]),
+            &quot;corr_Acc_Sev&quot;: safe_corr(d[&quot;accuracy&quot;], d[&quot;max_severity&quot;]),
+        })
+
+        tsi_p = float(d.groupby(&quot;level&quot;)[&quot;accuracy&quot;].mean().sum() * delta)
+        tsi_r = float(d.groupby(&quot;level&quot;)[&quot;TSI&quot;].mean().sum() * delta)
+        safe_risk = float(d.groupby(&quot;level&quot;)[&quot;max_severity&quot;].mean().sum() * delta)
+        utility = lam_P * tsi_p + lam_R * tsi_r - lam_S * safe_risk
+
+        summary_rows.append({
+            &quot;encoder&quot;: enc,
+            &quot;min_accuracy&quot;: float(d[&quot;accuracy&quot;].min()),
+            &quot;max_severity&quot;: float(d[&quot;max_severity&quot;].max()),
+            &quot;min_TSI&quot;: float(d[&quot;TSI&quot;].min()),
+            &quot;TSI_P&quot;: tsi_p,
+            &quot;TSI_R&quot;: tsi_r,
+            &quot;R_safe&quot;: safe_risk,
+            &quot;utility&quot;: utility,
+        })
+
+    df_corr = pd.DataFrame(corr_rows)
+    df_corr.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table9_Correlations_PerEncoder.csv&quot;, index=False)
+
+    df_summary = pd.DataFrame(summary_rows)
+    df_summary.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table10_TriObjective_Summary.csv&quot;, index=False)
+
+    # Fig 10a
+    plt.figure(figsize=(6.5, 5))
+    for enc in ENCODER_NAMES:
+        d = df_nonclean[df_nonclean.encoder == enc]
+        plt.scatter(d[&quot;TSI&quot;], d[&quot;accuracy&quot;], s=18, alpha=0.7, label=enc)
+    plt.xlabel(&quot;TSI&quot;)
+    plt.ylabel(&quot;Accuracy&quot;)
+    plt.title(&quot;TSI vs Accuracy&quot;)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig10a_TSI_vs_Acc.png&quot;)
+    plt.close()
+
+    # Fig 10b
+    plt.figure(figsize=(6.5, 5))
+    for enc in ENCODER_NAMES:
+        d = df_nonclean[df_nonclean.encoder == enc]
+        plt.scatter(d[&quot;TSI&quot;], d[&quot;max_severity&quot;], s=18, alpha=0.7, label=enc)
+    plt.xlabel(&quot;TSI&quot;)
+    plt.ylabel(&quot;Max severity&quot;)
+    plt.title(&quot;TSI vs Severity&quot;)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig10b_TSI_vs_Sev.png&quot;)
+    plt.close()
+
+    # Fig 11
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    fig = plt.figure(figsize=(7, 6))
+    ax = fig.add_subplot(111, projection=&quot;3d&quot;)
+    for enc in ENCODER_NAMES:
+        d = df_nonclean[df_nonclean.encoder == enc]
+        ax.scatter(d[&quot;accuracy&quot;], d[&quot;max_severity&quot;], d[&quot;TSI&quot;], s=18, alpha=0.7, label=enc)
+    ax.set_xlabel(&quot;Accuracy&quot;)
+    ax.set_ylabel(&quot;Severity&quot;)
+    ax.set_zlabel(&quot;TSI&quot;)
+    ax.set_title(&quot;Tri-objective projection&quot;)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig11_TriObjective_Projection.png&quot;)
+    plt.close(fig)
+
+    return df_join, df_corr, df_summary
+
+def run_fuzzing(model, data_dict, out_dirs):
+    if not cfg.run_fuzzing:
+        print(&quot;[skip] fuzzing disabled&quot;)
+        return None, None
+
+    X_te = data_dict[&quot;X_te&quot;]; y_te = data_dict[&quot;y_te&quot;]
+
+    n_seed = min(cfg.fuzz_seed_images, len(X_te))
+    seed_images = X_te[:n_seed]
+    seed_labels = y_te[:n_seed]
+
+    cov_rows = []
+    counterexamples = []
+    coverage = set()
+
+    for enc in ENCODER_NAMES:
+        # clean representation reference
+        clean_percepts, _, _ = build_percepts(seed_images, enc, &quot;clean&quot;, 0.0)
+        _, Z0 = decoder_predict(model, clean_percepts)
+        pca = PCA(n_components=min(10, Z0.shape[1]), random_state=SEED).fit(Z0)
+
+        for it in range(cfg.fuzz_iters):
+            new_bins = 0
+            for _ in range(cfg.fuzz_mutations_per_iter):
+                idx = np.random.randint(0, n_seed)
+                img = ensure_float01(seed_images[idx])
+                y = int(seed_labels[idx])
+
+                op = np.random.choice([&quot;noise&quot;, &quot;blur&quot;, &quot;dropout&quot;, &quot;occlusion&quot;])
+                level = float(np.random.uniform(0.0, 1.0))
+                img_mut = STRESS_OPS[op](img, level)
+
+                stim = ENCODERS[enc](img_mut)
+                sev = compute_severity(stim)
+                percept = phosphene_simulator(stim)[None, ...]
+                pred, z = decoder_predict(model, percept)
+                correct = int(pred[0] == y)
+
+                z_ref = pca.transform(Z0[:1])[0]
+                z_cur = pca.transform(z)[0]
+                rep_dist = float(np.linalg.norm(z_cur - z_ref))
+
+                bin_key = (
+                    enc,
+                    min(9, int(sev[&quot;severity&quot;] * 3)),
+                    min(9, int(rep_dist * 2)),
+                    correct,
+                )
+                if bin_key not in coverage:
+                    coverage.add(bin_key)
+                    new_bins += 1
+
+                score = sev[&quot;severity&quot;] + (0 if correct else 1.0) + 0.25 * rep_dist
+                counterexamples.append({
+                    &quot;encoder&quot;: enc,
+                    &quot;iter&quot;: it,
+                    &quot;seed_idx&quot;: idx,
+                    &quot;op&quot;: op,
+                    &quot;level&quot;: level,
+                    &quot;y_true&quot;: y,
+                    &quot;y_pred&quot;: int(pred[0]),
+                    &quot;correct&quot;: correct,
+                    &quot;severity&quot;: float(sev[&quot;severity&quot;]),
+                    &quot;rep_dist&quot;: rep_dist,
+                    &quot;score&quot;: score,
+                    &quot;image&quot;: (img_mut * 255.0).astype(np.uint8),
+                })
+
+            cov_rows.append({&quot;encoder&quot;: enc, &quot;iter&quot;: it, &quot;coverage_size&quot;: len(coverage), &quot;new_bins&quot;: new_bins})
+
+    df_cov = pd.DataFrame(cov_rows)
+    df_cov.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table6_Fuzz_CoverageMetrics.csv&quot;, index=False)
+
+    counterexamples = sorted(counterexamples, key=lambda d: d[&quot;score&quot;], reverse=True)
+    K = min(24, len(counterexamples))
+    top = counterexamples[:K]
+    df_top = pd.DataFrame([{k: v for k, v in d.items() if k != &quot;image&quot;} for d in top])
+    df_top.to_csv(out_dirs[&quot;tab&quot;] / &quot;Table7_Fuzz_Counterexamples.csv&quot;, index=False)
+
+    # coverage figure
+    plt.figure(figsize=(8, 5))
+    for enc in ENCODER_NAMES:
+        d = df_cov[df_cov.encoder == enc]
+        plt.plot(d[&quot;iter&quot;], d[&quot;coverage_size&quot;], marker=&quot;o&quot;, label=enc)
+    plt.xlabel(&quot;Iteration&quot;)
+    plt.ylabel(&quot;Coverage size&quot;)
+    plt.title(&quot;Fuzz coverage growth&quot;)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig6_Fuzz_Coverage_Growth.png&quot;)
+    plt.close()
+
+    # counterexample mosaic
+    if len(top):
+        cols = 4
+        rows = int(np.ceil(len(top) / cols))
+        fig, axes = plt.subplots(rows, cols, figsize=(3*cols, 3*rows))
+        axes = np.array(axes).reshape(rows, cols)
+        for ax in axes.ravel():
+            ax.axis(&quot;off&quot;)
+        for ax, d in zip(axes.ravel(), top):
+            ax.imshow(d[&quot;image&quot;], cmap=&quot;gray&quot;, vmin=0, vmax=255)
+            ax.set_title(f&quot;{d[&#39;encoder&#39;]} | {d[&#39;op&#39;]}={d[&#39;level&#39;]:.2f}\nsev={d[&#39;severity&#39;]:.2f}, pred={d[&#39;y_pred&#39;]}&quot;)
+            ax.axis(&quot;off&quot;)
+        fig.tight_layout()
+        fig.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig7_Fuzz_Worst_Counterexamples.png&quot;)
+        plt.close(fig)
+
+    return df_cov, df_top
+</code></pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 12</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 9. Benchmark runner
+def run_benchmark(spec: BenchmarkSpec):
+    bench_seed = stable_seed(SEED, spec.name)
+    seed_everything(bench_seed)
+    print(&quot;\n&quot; + &quot;=&quot;*90)
+    print(f&quot;RUN BENCHMARK: {spec.name}&quot;)
+    print(&quot;=&quot;*90)
+
+    out_dirs = benchmark_dirs(spec.name)
+    save_method_tables(spec, out_dirs)
+
+    data_dict = load_benchmark(spec, seed=SEED)
+    print(
+        &quot;Loaded shapes:&quot;,
+        data_dict[&quot;X_tr&quot;].shape, data_dict[&quot;y_tr&quot;].shape,
+        data_dict[&quot;X_va&quot;].shape, data_dict[&quot;y_va&quot;].shape,
+        data_dict[&quot;X_te&quot;].shape, data_dict[&quot;y_te&quot;].shape
+    )
+
+    save_json({&quot;benchmark&quot;: spec.name, &quot;benchmark_seed&quot;: int(bench_seed)}, out_dirs[&quot;root&quot;] / &quot;BenchmarkSeed.json&quot;)
+    save_split_metadata(spec, data_dict, out_dirs)
+
+    model_path = out_dirs[&quot;model&quot;] / &quot;decoder.pt&quot;
+    model, hist = train_shared_decoder(data_dict, spec.n_classes, model_path, seed=bench_seed)
+    hist.to_csv(out_dirs[&quot;tab&quot;] / &quot;TableDecoder_TrainHistory.csv&quot;, index=False)
+    save_decoder_table(out_dirs, spec.n_classes)
+
+    # training curves
+    plt.figure(figsize=(8, 4.5))
+    plt.plot(hist[&quot;epoch&quot;], hist[&quot;train_acc&quot;], marker=&quot;o&quot;, label=&quot;train_acc&quot;)
+    plt.plot(hist[&quot;epoch&quot;], hist[&quot;val_acc&quot;], marker=&quot;o&quot;, label=&quot;val_acc&quot;)
+    plt.xlabel(&quot;Epoch&quot;)
+    plt.ylabel(&quot;Accuracy&quot;)
+    plt.title(&quot;Training curves&quot;)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dirs[&quot;fig&quot;] / &quot;Fig10_Training_Curves.png&quot;)
+    plt.close()
+
+    df_stress = evaluate_stress_sweep(model, data_dict, out_dirs)
+    df_tda = run_topology_analysis(model, data_dict, out_dirs)
+    df_join, df_corr, df_summary = run_triobjective(df_stress, df_tda, out_dirs)
+    df_cov, df_top = run_fuzzing(model, data_dict, out_dirs)
+
+    bench_summary = {
+        &quot;benchmark&quot;: spec.name,
+        &quot;n_classes&quot;: spec.n_classes,
+        &quot;train_n&quot;: int(len(data_dict[&quot;X_tr&quot;])),
+        &quot;val_n&quot;: int(len(data_dict[&quot;X_va&quot;])),
+        &quot;test_n&quot;: int(len(data_dict[&quot;X_te&quot;])),
+        &quot;artifacts_root&quot;: str(out_dirs[&quot;root&quot;]),
+    }
+    save_json(bench_summary, out_dirs[&quot;root&quot;] / &quot;benchmark_summary.json&quot;)
+    return {
+        &quot;spec&quot;: spec,
+        &quot;dirs&quot;: out_dirs,
+        &quot;stress&quot;: df_stress,
+        &quot;tda&quot;: df_tda,
+        &quot;join&quot;: df_join,
+        &quot;corr&quot;: df_corr,
+        &quot;summary&quot;: df_summary,
+        &quot;fuzz_cov&quot;: df_cov,
+        &quot;fuzz_top&quot;: df_top,
+    }
+</code></pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 13</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 10. Execute all benchmarks
+save_cfg_and_benchmarks()
+all_results = {}
+t0 = time.time()
+
+for spec in BENCHMARKS:
+    all_results[spec.name] = run_benchmark(spec)
+
+elapsed = time.time() - t0
+print(f&quot;All benchmarks finished in {elapsed/60:.1f} min&quot;)
+save_run_manifest({&quot;elapsed_min&quot;: elapsed/60.0, &quot;completed&quot;: True})
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">
+==========================================================================================
+RUN BENCHMARK: emnist_letters
+==========================================================================================
+Loaded shapes: (20000, 64, 64) (20000,) (3000, 64, 64) (3000,) (3000, 64, 64) (3000,)
+Epoch 01/8 | train acc 0.601 | val acc 0.604
+Epoch 02/8 | train acc 0.683 | val acc 0.673
+Epoch 03/8 | train acc 0.736 | val acc 0.726
+Epoch 04/8 | train acc 0.764 | val acc 0.754
+Epoch 05/8 | train acc 0.784 | val acc 0.773
+Epoch 06/8 | train acc 0.789 | val acc 0.773
+Epoch 07/8 | train acc 0.805 | val acc 0.787
+Epoch 08/8 | train acc 0.812 | val acc 0.794
+
+==========================================================================================
+RUN BENCHMARK: coco_4cls
+==========================================================================================
+Loaded shapes: (4000, 64, 64) (4000,) (1000, 64, 64) (1000,) (1000, 64, 64) (1000,)
+Epoch 01/8 | train acc 0.250 | val acc 0.250
+Epoch 02/8 | train acc 0.312 | val acc 0.300
+Epoch 03/8 | train acc 0.316 | val acc 0.305
+Epoch 04/8 | train acc 0.323 | val acc 0.300
+Epoch 05/8 | train acc 0.331 | val acc 0.303
+Epoch 06/8 | train acc 0.338 | val acc 0.301
+Epoch 07/8 | train acc 0.345 | val acc 0.292
+Epoch 08/8 | train acc 0.354 | val acc 0.303
+All benchmarks finished in 46.7 min
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 14</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 11. Global sanity check
+required_figs = [
+    &quot;Fig3_Accuracy_vs_Level.png&quot;,
+    &quot;Fig4_Severity_vs_Level.png&quot;,
+    &quot;Fig8_Persistence_Diagrams.png&quot;,
+    &quot;Fig9_TSI_vs_Level.png&quot;,
+    &quot;Fig10a_TSI_vs_Acc.png&quot;,
+    &quot;Fig10b_TSI_vs_Sev.png&quot;,
+    &quot;Fig11_TriObjective_Projection.png&quot;,
+]
+required_tabs = [
+    &quot;Table1_EncodingStrategies.csv&quot;,
+    &quot;Table2_SafetyConstraints_SeverityDefinitions.csv&quot;,
+    &quot;Table3_DecoderConfig.csv&quot;,
+    &quot;Table4_Clean_PerfSafety.csv&quot;,
+    &quot;Table5_Worst_PerfSafety.csv&quot;,
+    &quot;Table8_TDA_TopologyMetrics.csv&quot;,
+    &quot;Table9_Correlations_PerEncoder.csv&quot;,
+    &quot;Table10_TriObjective_Summary.csv&quot;,
+]
+
+rows = []
+for spec in BENCHMARKS:
+    dirs = benchmark_dirs(spec.name)
+    for f in required_figs:
+        rows.append({&quot;benchmark&quot;: spec.name, &quot;kind&quot;: &quot;figure&quot;, &quot;file&quot;: f, &quot;exists&quot;: (dirs[&quot;fig&quot;] / f).exists()})
+    for t in required_tabs:
+        rows.append({&quot;benchmark&quot;: spec.name, &quot;kind&quot;: &quot;table&quot;, &quot;file&quot;: t, &quot;exists&quot;: (dirs[&quot;tab&quot;] / t).exists()})
+
+df_check = pd.DataFrame(rows)
+df_check.to_csv(SUMMARY_DIR / &quot;SanityCheck_Artifacts.csv&quot;, index=False)
+print(df_check)
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">         benchmark    kind                                              file  \
+0   emnist_letters  figure                        Fig3_Accuracy_vs_Level.png   
+1   emnist_letters  figure                        Fig4_Severity_vs_Level.png   
+2   emnist_letters  figure                     Fig8_Persistence_Diagrams.png   
+3   emnist_letters  figure                             Fig9_TSI_vs_Level.png   
+4   emnist_letters  figure                             Fig10a_TSI_vs_Acc.png   
+5   emnist_letters  figure                             Fig10b_TSI_vs_Sev.png   
+6   emnist_letters  figure                 Fig11_TriObjective_Projection.png   
+7   emnist_letters   table                     Table1_EncodingStrategies.csv   
+8   emnist_letters   table  Table2_SafetyConstraints_SeverityDefinitions.csv   
+9   emnist_letters   table                          Table3_DecoderConfig.csv   
+10  emnist_letters   table                       Table4_Clean_PerfSafety.csv   
+11  emnist_letters   table                       Table5_Worst_PerfSafety.csv   
+12  emnist_letters   table                    Table8_TDA_TopologyMetrics.csv   
+13  emnist_letters   table                Table9_Correlations_PerEncoder.csv   
+14  emnist_letters   table                  Table10_TriObjective_Summary.csv   
+15       coco_4cls  figure                        Fig3_Accuracy_vs_Level.png   
+16       coco_4cls  figure                        Fig4_Severity_vs_Level.png   
+17       coco_4cls  figure                     Fig8_Persistence_Diagrams.png   
+18       coco_4cls  figure                             Fig9_TSI_vs_Level.png   
+19       coco_4cls  figure                             Fig10a_TSI_vs_Acc.png   
+20       coco_4cls  figure                             Fig10b_TSI_vs_Sev.png   
+21       coco_4cls  figure                 Fig11_TriObjective_Projection.png   
+22       coco_4cls   table                     Table1_EncodingStrategies.csv   
+23       coco_4cls   table  Table2_SafetyConstraints_SeverityDefinitions.csv   
+24       coco_4cls   table                          Table3_DecoderConfig.csv   
+25       coco_4cls   table                       Table4_Clean_PerfSafety.csv   
+26       coco_4cls   table                       Table5_Worst_PerfSafety.csv   
+27       coco_4cls   table                    Table8_TDA_TopologyMetrics.csv   
+28       coco_4cls   table                Table9_Correlations_PerEncoder.csv   
+29       coco_4cls   table                  Table10_TriObjective_Summary.csv   
+
+    exists  
+0     True  
+1     True  
+2     True  
+3     True  
+4     True  
+5     True  
+6     True  
+7     True  
+8     True  
+9     True  
+10    True  
+11    True  
+12    True  
+13    True  
+14    True  
+15    True  
+16    True  
+17    True  
+18    True  
+19    True  
+20    True  
+21    True  
+22    True  
+23    True  
+24    True  
+25    True  
+26    True  
+27    True  
+28    True  
+29    True  
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 15</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 12. Compact cross-benchmark summary
+summary_rows = []
+for spec in BENCHMARKS:
+    dirs = benchmark_dirs(spec.name)
+    p = dirs[&quot;tab&quot;] / &quot;Table10_TriObjective_Summary.csv&quot;
+    if p.exists():
+        df = pd.read_csv(p)
+        df.insert(0, &quot;benchmark&quot;, spec.name)
+        summary_rows.append(df)
+
+if summary_rows:
+    df_all = pd.concat(summary_rows, axis=0, ignore_index=True)
+    df_all.to_csv(SUMMARY_DIR / &quot;CrossBenchmark_TriObjective_Summary.csv&quot;, index=False)
+    print(df_all)
+else:
+    print(&quot;No benchmark summary found.&quot;)
+</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">        benchmark   encoder  min_accuracy  max_severity   min_TSI     TSI_P  \
+0  emnist_letters      rate      0.138333  2.250000e-01  0.006008  0.831833   
+1  emnist_letters    sparse      0.143333  2.880891e-07  0.072228  0.765333   
+2  emnist_letters  temporal      0.129667  5.400000e+00  0.078202  0.817792   
+3  emnist_letters     optim      0.143667  2.250000e-01  0.015841  0.834229   
+4       coco_4cls      rate      0.289000  5.000000e-01  0.038506  0.378000   
+5       coco_4cls    sparse      0.267000  2.880891e-07  0.149767  0.374250   
+6       coco_4cls  temporal      0.278000  5.400000e+00  0.043345  0.379812   
+7       coco_4cls     optim      0.259000  5.000000e-01  0.020579  0.372125   
+
+      TSI_R        R_safe   utility  
+0  0.642728  1.609375e-01  1.313623  
+1  0.649494  2.863817e-07  1.414827  
+2  0.615999  4.090625e+00 -2.656834  
+3  0.603938  1.437500e-01  1.294417  
+4  0.567384  3.156250e-01  0.629759  
+5  0.648588  2.863817e-07  1.022838  
+6  0.600127  6.015626e-01  0.378376  
+7  0.543593  3.125000e-01  0.603218  
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 16</h2><div class="nb-md"><p>Reviewer 2 response</p>
+</div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 17</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 13
+# ============================================================
+# Reviewer 2 Comment 1–3 Post-processing Cell
+# Colab / Windows compatible
+#
+# Purpose:
+#   Comment 1: COCO diagnostic metrics
+#              - accuracy, balanced accuracy, macro-F1
+#              - per-class precision/recall/F1
+#              - confusion matrices
+#
+#   Comment 2: Uncertainty estimates
+#              - Wilson CI for accuracy
+#              - condition-level bootstrap CI for utility
+#
+#   Comment 3: Pareto dominance summary
+#              - three-axis dominance using:
+#                TSI_P maximize, TSI_R maximize, R_safe minimize
+#
+# Output:
+#   G:\내 드라이브\RunPackageC_EMNIST_COCO\reviewer2_comment_outputs
+#   or, in Colab:
+#   /content/drive/MyDrive/RunPackageC_EMNIST_COCO/reviewer2_comment_outputs
+# ============================================================
+
+from pathlib import Path
+import os
+import sys
+import json
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+import torch
+
+from sklearn.metrics import (
+    confusion_matrix,
+    classification_report,
+    balanced_accuracy_score,
+    f1_score,
+    accuracy_score
+)
+
+# ------------------------------------------------------------
+# 0. Environment and output-directory setup
+# ------------------------------------------------------------
+
+IN_COLAB = &quot;google.colab&quot; in sys.modules
+
+if IN_COLAB:
+    from google.colab import drive
+    drive.mount(&quot;/content/drive&quot;, force_remount=False)
+    BASE_DIR = Path(&quot;/content/drive/MyDrive/RunPackageC_EMNIST_COCO&quot;)
+else:
+    BASE_DIR = Path(r&quot;G:\내 드라이브\RunPackageC_EMNIST_COCO&quot;)
+
+# If the original notebook already defined ROOT, use it when appropriate.
+# This prevents mismatch if the notebook root differs from BASE_DIR.
+try:
+    if Path(ROOT).exists():
+        BASE_DIR = Path(ROOT)
+except NameError:
+    pass
+
+OUTPUT_BASE = BASE_DIR / &quot;reviewer2_comment_outputs&quot;
+
+COMMENT1_DIR = OUTPUT_BASE / &quot;comment1_coco_diagnostic_metrics&quot;
+COMMENT2_DIR = OUTPUT_BASE / &quot;comment2_uncertainty_bootstrap_CI&quot;
+COMMENT3_DIR = OUTPUT_BASE / &quot;comment3_pareto_dominance&quot;
+
+for d in [OUTPUT_BASE, COMMENT1_DIR, COMMENT2_DIR, COMMENT3_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
+
+print(&quot;BASE_DIR:&quot;, BASE_DIR)
+print(&quot;OUTPUT_BASE:&quot;, OUTPUT_BASE)
+print(&quot;COMMENT1_DIR:&quot;, COMMENT1_DIR)
+print(&quot;COMMENT2_DIR:&quot;, COMMENT2_DIR)
+print(&quot;COMMENT3_DIR:&quot;, COMMENT3_DIR)
+
+
+# ------------------------------------------------------------
+# 1. Sanity checks: required objects from the original notebook
+# ------------------------------------------------------------
+
+required_names = [
+    &quot;cfg&quot;,
+    &quot;BENCHMARKS&quot;,
+    &quot;SEED&quot;,
+    &quot;DEVICE&quot;,
+    &quot;ENCODER_NAMES&quot;,
+    &quot;benchmark_dirs&quot;,
+    &quot;load_benchmark&quot;,
+    &quot;DecoderNet&quot;,
+    &quot;build_percepts&quot;,
+    &quot;decoder_predict&quot;,
+]
+
+missing = [name for name in required_names if name not in globals()]
+if missing:
+    raise RuntimeError(
+        &quot;The following objects are not defined. &quot;
+        &quot;Please run the original notebook definition cells first: &quot;
+        + &quot;, &quot;.join(missing)
+    )
+
+print(&quot;\nRequired notebook objects are available.&quot;)
+
+
+# ------------------------------------------------------------
+# Helper functions
+# ------------------------------------------------------------
+
+def get_benchmark_spec(name):
+    for spec in BENCHMARKS:
+        if spec.name == name:
+            return spec
+    raise RuntimeError(f&quot;Benchmark spec not found: {name}&quot;)
+
+
+def load_frozen_decoder(spec, dirs):
+    &quot;&quot;&quot;
+    Load the saved frozen decoder for a benchmark.
+    This does not retrain the decoder.
+    &quot;&quot;&quot;
+    model_path = dirs[&quot;model&quot;] / &quot;decoder.pt&quot;
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f&quot;Saved decoder not found: {model_path}\n&quot;
+            &quot;The original benchmark may need to be executed at least once, &quot;
+            &quot;or the model file path may be different.&quot;
+        )
+
+    ckpt = torch.load(model_path, map_location=DEVICE)
+    model = DecoderNet(latent_dim=cfg.latent_dim, n_classes=spec.n_classes).to(DEVICE)
+    model.load_state_dict(ckpt[&quot;model_state&quot;])
+    model.eval()
+
+    for p in model.parameters():
+        p.requires_grad = False
+
+    return model
+
+
+def wilson_ci(k, n, z=1.96):
+    &quot;&quot;&quot;
+    Wilson 95% CI for binomial proportion.
+    Used for accuracy CI based on reported accuracy and test-set size.
+    &quot;&quot;&quot;
+    if n &lt;= 0:
+        return np.nan, np.nan
+
+    p = k / n
+    denom = 1.0 + z**2 / n
+    center = (p + z**2 / (2*n)) / denom
+    half = z * np.sqrt((p * (1-p) + z**2 / (4*n)) / n) / denom
+
+    return center - half, center + half
+
+
+def percentile_ci(values, alpha=0.05):
+    &quot;&quot;&quot;
+    Percentile confidence interval.
+    &quot;&quot;&quot;
+    values = np.asarray(values, dtype=float)
+    return (
+        float(np.percentile(values, 100 * alpha / 2)),
+        float(np.percentile(values, 100 * (1 - alpha / 2)))
+    )
+
+
+def safe_round_df(df, cols, ndigits=4):
+    out = df.copy()
+    for c in cols:
+        if c in out.columns:
+            out[c] = out[c].astype(float).round(ndigits)
+    return out
+
+
+# ============================================================
+# Reviewer 2 Comment 1
+# COCO clean-condition diagnostic metrics
+# ============================================================
+
+print(&quot;\n[Comment 1] Generating COCO clean-condition diagnostic metrics...&quot;)
+
+coco_spec = get_benchmark_spec(&quot;coco_4cls&quot;)
+coco_dirs = benchmark_dirs(&quot;coco_4cls&quot;)
+
+# Load data and frozen decoder.
+# This reloads the dataset but does not retrain the model.
+coco_data = load_benchmark(coco_spec, seed=SEED)
+coco_model = load_frozen_decoder(coco_spec, coco_dirs)
+
+X_te = coco_data[&quot;X_te&quot;]
+y_te = coco_data[&quot;y_te&quot;]
+
+class_names = list(coco_spec.label_names)
+labels = list(range(coco_spec.n_classes))
+
+coco_summary_rows = []
+
+for enc in ENCODER_NAMES:
+    print(f&quot;  Encoder: {enc}&quot;)
+
+    # Clean-condition percepts and predictions.
+    # This is a post-processing inference step, not model retraining.
+    percepts, _, _ = build_percepts(X_te, enc, &quot;clean&quot;, 0.0)
+    y_pred, _ = decoder_predict(coco_model, percepts)
+
+    y_pred = np.asarray(y_pred)
+    y_true = np.asarray(y_te)
+
+    # Save sample-level predictions.
+    pred_df = pd.DataFrame({
+        &quot;benchmark&quot;: &quot;coco_4cls&quot;,
+        &quot;encoder&quot;: enc,
+        &quot;sample_index&quot;: np.arange(len(y_true)),
+        &quot;y_true&quot;: y_true,
+        &quot;y_pred&quot;: y_pred,
+        &quot;correct&quot;: (y_true == y_pred).astype(int),
+    })
+
+    pred_path = COMMENT1_DIR / f&quot;COCO_clean_predictions_{enc}.csv&quot;
+    pred_df.to_csv(pred_path, index=False)
+
+    # Confusion matrix.
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    cm_df = pd.DataFrame(cm, index=class_names, columns=class_names)
+    cm_csv_path = COMMENT1_DIR / f&quot;COCO_confusion_matrix_{enc}.csv&quot;
+    cm_df.to_csv(cm_csv_path)
+
+    # Confusion matrix figure.
+    fig, ax = plt.subplots(figsize=(5.6, 4.8))
+    im = ax.imshow(cm)
+    ax.set_xticks(np.arange(len(class_names)))
+    ax.set_yticks(np.arange(len(class_names)))
+    ax.set_xticklabels(class_names, rotation=30, ha=&quot;right&quot;)
+    ax.set_yticklabels(class_names)
+    ax.set_xlabel(&quot;Predicted class&quot;)
+    ax.set_ylabel(&quot;True class&quot;)
+    ax.set_title(f&quot;COCO clean confusion matrix ({enc})&quot;)
+
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, str(cm[i, j]), ha=&quot;center&quot;, va=&quot;center&quot;)
+
+    fig.colorbar(im, ax=ax)
+    fig.tight_layout()
+
+    cm_fig_path = COMMENT1_DIR / f&quot;COCO_confusion_matrix_{enc}.png&quot;
+    fig.savefig(cm_fig_path, dpi=300)
+    plt.close(fig)
+
+    # Per-class precision/recall/F1.
+    report = classification_report(
+        y_true,
+        y_pred,
+        labels=labels,
+        target_names=class_names,
+        output_dict=True,
+        zero_division=0
+    )
+    report_df = pd.DataFrame(report).T
+    report_csv_path = COMMENT1_DIR / f&quot;COCO_classification_report_{enc}.csv&quot;
+    report_df.to_csv(report_csv_path)
+
+    # Summary metrics.
+    acc = float(accuracy_score(y_true, y_pred))
+    bacc = float(balanced_accuracy_score(y_true, y_pred))
+    macro_f1 = float(f1_score(y_true, y_pred, average=&quot;macro&quot;, zero_division=0))
+
+    coco_summary_rows.append({
+        &quot;benchmark&quot;: &quot;coco_4cls&quot;,
+        &quot;encoder&quot;: enc,
+        &quot;n_test&quot;: len(y_true),
+        &quot;accuracy&quot;: acc,
+        &quot;balanced_accuracy&quot;: bacc,
+        &quot;macro_f1&quot;: macro_f1,
+        &quot;prediction_csv&quot;: pred_path.name,
+        &quot;confusion_matrix_csv&quot;: cm_csv_path.name,
+        &quot;classification_report_csv&quot;: report_csv_path.name,
+        &quot;confusion_matrix_png&quot;: cm_fig_path.name,
+    })
+
+coco_summary_df = pd.DataFrame(coco_summary_rows)
+coco_summary_df = safe_round_df(
+    coco_summary_df,
+    [&quot;accuracy&quot;, &quot;balanced_accuracy&quot;, &quot;macro_f1&quot;],
+    ndigits=4
+)
+
+coco_summary_path = COMMENT1_DIR / &quot;Manuscript_Table_COCO_Diagnostic_Metrics.csv&quot;
+coco_summary_df.to_csv(coco_summary_path, index=False)
+
+print(&quot;\nCOCO diagnostic metrics saved:&quot;)
+print(coco_summary_path)
+display(coco_summary_df)
+
+
+# ============================================================
+# Reviewer 2 Comment 2
+# Accuracy CI and utility condition-level bootstrap CI
+# ============================================================
+
+print(&quot;\n[Comment 2] Generating uncertainty summaries...&quot;)
+
+# ------------------------------------------------------------
+# 2A. Accuracy Wilson CI by Encoder × Operator × Level
+# ------------------------------------------------------------
+
+accuracy_ci_rows = []
+
+for spec in BENCHMARKS:
+    dirs = benchmark_dirs(spec.name)
+    stress_path = dirs[&quot;tab&quot;] / &quot;TableStress_PerfSafety_ByEncoderOpLevel.csv&quot;
+
+    if not stress_path.exists():
+        print(f&quot;  Missing stress table for {spec.name}: {stress_path}&quot;)
+        continue
+
+    df_stress = pd.read_csv(stress_path)
+
+    summary_path = dirs[&quot;root&quot;] / &quot;benchmark_summary.json&quot;
+    if summary_path.exists():
+        with open(summary_path, &quot;r&quot;, encoding=&quot;utf-8&quot;) as f:
+            bench_summary = json.load(f)
+        n_test = int(bench_summary.get(&quot;test_n&quot;, spec.test_max))
+    else:
+        n_test = int(spec.test_max)
+
+    for _, row in df_stress.iterrows():
+        acc = float(row[&quot;accuracy&quot;])
+        k = int(round(acc * n_test))
+        lo, hi = wilson_ci(k, n_test)
+
+        accuracy_ci_rows.append({
+            &quot;benchmark&quot;: spec.name,
+            &quot;encoder&quot;: row[&quot;encoder&quot;],
+            &quot;op&quot;: row[&quot;op&quot;],
+            &quot;level&quot;: row[&quot;level&quot;],
+            &quot;accuracy&quot;: acc,
+            &quot;n_test&quot;: n_test,
+            &quot;correct_approx&quot;: k,
+            &quot;accuracy_CI95_low&quot;: lo,
+            &quot;accuracy_CI95_high&quot;: hi,
+            &quot;CI_method&quot;: &quot;Wilson binomial CI based on reported accuracy and test-set size&quot;,
+        })
+
+accuracy_ci_df = pd.DataFrame(accuracy_ci_rows)
+accuracy_ci_df = safe_round_df(
+    accuracy_ci_df,
+    [&quot;accuracy&quot;, &quot;accuracy_CI95_low&quot;, &quot;accuracy_CI95_high&quot;],
+    ndigits=4
+)
+
+accuracy_ci_path = COMMENT2_DIR / &quot;Accuracy_Wilson_CI_ByEncoderOpLevel.csv&quot;
+accuracy_ci_df.to_csv(accuracy_ci_path, index=False)
+
+print(&quot;Accuracy CI table saved:&quot;)
+print(accuracy_ci_path)
+
+
+# ------------------------------------------------------------
+# 2B. Utility condition-level bootstrap CI
+# ------------------------------------------------------------
+# This is not repeated-seed retraining.
+# It is a condition-level percentile bootstrap over non-clean
+# Encoder × Operator × Level rows.
+# ------------------------------------------------------------
+
+rng = np.random.default_rng(42)
+N_BOOT = 5000
+
+utility_ci_rows = []
+
+for spec in BENCHMARKS:
+    dirs = benchmark_dirs(spec.name)
+    stress_path = dirs[&quot;tab&quot;] / &quot;TableStress_PerfSafety_ByEncoderOpLevel.csv&quot;
+    tda_path = dirs[&quot;tab&quot;] / &quot;Table8_TDA_TopologyMetrics.csv&quot;
+
+    if not stress_path.exists():
+        print(f&quot;  Missing stress table for {spec.name}: {stress_path}&quot;)
+        continue
+    if not tda_path.exists():
+        print(f&quot;  Missing TDA table for {spec.name}: {tda_path}&quot;)
+        continue
+
+    df_stress = pd.read_csv(stress_path)
+    df_tda = pd.read_csv(tda_path)
+
+    df_join = df_stress.merge(df_tda, on=[&quot;encoder&quot;, &quot;op&quot;, &quot;level&quot;], how=&quot;inner&quot;)
+    df_nonclean = df_join[df_join[&quot;op&quot;] != &quot;clean&quot;].copy()
+
+    for enc in ENCODER_NAMES:
+        d = df_nonclean[df_nonclean[&quot;encoder&quot;] == enc].copy()
+        if len(d) == 0:
+            continue
+
+        # Use the same integration logic as Table10:
+        # group by stress level, average across operators, integrate over levels.
+        levels_sorted = sorted(d[&quot;level&quot;].unique())
+        if len(levels_sorted) &gt;= 2:
+            delta = float(levels_sorted[1] - levels_sorted[0])
+        else:
+            delta = 1.0
+
+        # Condition-level rows for bootstrap.
+        arr = d[[&quot;level&quot;, &quot;accuracy&quot;, &quot;TSI&quot;, &quot;max_severity&quot;]].to_numpy()
+        n_cond = arr.shape[0]
+
+        boot_util = []
+        boot_P = []
+        boot_R = []
+        boot_S = []
+
+        for _ in range(N_BOOT):
+            idx = rng.integers(0, n_cond, size=n_cond)
+            sample = pd.DataFrame(
+                arr[idx, :],
+                columns=[&quot;level&quot;, &quot;accuracy&quot;, &quot;TSI&quot;, &quot;max_severity&quot;]
+            )
+
+            # Recompute integrated quantities after resampling conditions.
+            P = float(sample.groupby(&quot;level&quot;)[&quot;accuracy&quot;].mean().sum() * delta)
+            R = float(sample.groupby(&quot;level&quot;)[&quot;TSI&quot;].mean().sum() * delta)
+            S = float(sample.groupby(&quot;level&quot;)[&quot;max_severity&quot;].mean().sum() * delta)
+            U = P + R - S
+
+            boot_P.append(P)
+            boot_R.append(R)
+            boot_S.append(S)
+            boot_util.append(U)
+
+        # Original non-bootstrap estimate using the same formula.
+        P_mean = float(d.groupby(&quot;level&quot;)[&quot;accuracy&quot;].mean().sum() * delta)
+        R_mean = float(d.groupby(&quot;level&quot;)[&quot;TSI&quot;].mean().sum() * delta)
+        S_mean = float(d.groupby(&quot;level&quot;)[&quot;max_severity&quot;].mean().sum() * delta)
+        U_mean = P_mean + R_mean - S_mean
+
+        U_lo, U_hi = percentile_ci(boot_util)
+
+        utility_ci_rows.append({
+            &quot;benchmark&quot;: spec.name,
+            &quot;encoder&quot;: enc,
+            &quot;n_conditions&quot;: n_cond,
+            &quot;n_bootstrap&quot;: N_BOOT,
+            &quot;TSI_P_mean&quot;: P_mean,
+            &quot;TSI_R_mean&quot;: R_mean,
+            &quot;R_safe_mean&quot;: S_mean,
+            &quot;utility_mean&quot;: U_mean,
+            &quot;utility_CI95_low&quot;: U_lo,
+            &quot;utility_CI95_high&quot;: U_hi,
+            &quot;CI_method&quot;: &quot;Condition-level percentile bootstrap over non-clean encoder-operator-level rows&quot;,
+        })
+
+utility_ci_df = pd.DataFrame(utility_ci_rows)
+utility_ci_df = safe_round_df(
+    utility_ci_df,
+    [
+        &quot;TSI_P_mean&quot;,
+        &quot;TSI_R_mean&quot;,
+        &quot;R_safe_mean&quot;,
+        &quot;utility_mean&quot;,
+        &quot;utility_CI95_low&quot;,
+        &quot;utility_CI95_high&quot;,
+    ],
+    ndigits=4
+)
+
+utility_ci_path = COMMENT2_DIR / &quot;Manuscript_Table_Utility_ConditionBootstrap_CI.csv&quot;
+utility_ci_df.to_csv(utility_ci_path, index=False)
+
+print(&quot;\nUtility condition-level bootstrap CI table saved:&quot;)
+print(utility_ci_path)
+display(utility_ci_df)
+
+
+# ============================================================
+# Reviewer 2 Comment 3
+# Pareto dominance summary
+# ============================================================
+
+print(&quot;\n[Comment 3] Generating Pareto dominance summary...&quot;)
+
+pareto_rows = []
+
+for spec in BENCHMARKS:
+    dirs = benchmark_dirs(spec.name)
+    tri_path = dirs[&quot;tab&quot;] / &quot;Table10_TriObjective_Summary.csv&quot;
+
+    if not tri_path.exists():
+        print(f&quot;  Missing tri-objective summary for {spec.name}: {tri_path}&quot;)
+        continue
+
+    df = pd.read_csv(tri_path).copy()
+
+    required_cols = [&quot;encoder&quot;, &quot;TSI_P&quot;, &quot;TSI_R&quot;, &quot;R_safe&quot;, &quot;utility&quot;]
+    missing_cols = [c for c in required_cols if c not in df.columns]
+    if missing_cols:
+        raise RuntimeError(
+            f&quot;Missing columns in {tri_path}: {missing_cols}\n&quot;
+            f&quot;Available columns: {list(df.columns)}&quot;
+        )
+
+    for i, row_i in df.iterrows():
+        dominated_by = []
+        dominates = []
+
+        for j, row_j in df.iterrows():
+            if i == j:
+                continue
+
+            # Objective directions:
+            # TSI_P: maximize
+            # TSI_R: maximize
+            # R_safe: minimize
+            j_at_least_as_good = (
+                (row_j[&quot;TSI_P&quot;] &gt;= row_i[&quot;TSI_P&quot;]) and
+                (row_j[&quot;TSI_R&quot;] &gt;= row_i[&quot;TSI_R&quot;]) and
+                (row_j[&quot;R_safe&quot;] &lt;= row_i[&quot;R_safe&quot;])
+            )
+            j_strictly_better = (
+                (row_j[&quot;TSI_P&quot;] &gt; row_i[&quot;TSI_P&quot;]) or
+                (row_j[&quot;TSI_R&quot;] &gt; row_i[&quot;TSI_R&quot;]) or
+                (row_j[&quot;R_safe&quot;] &lt; row_i[&quot;R_safe&quot;])
+            )
+
+            if j_at_least_as_good and j_strictly_better:
+                dominated_by.append(row_j[&quot;encoder&quot;])
+
+            i_at_least_as_good = (
+                (row_i[&quot;TSI_P&quot;] &gt;= row_j[&quot;TSI_P&quot;]) and
+                (row_i[&quot;TSI_R&quot;] &gt;= row_j[&quot;TSI_R&quot;]) and
+                (row_i[&quot;R_safe&quot;] &lt;= row_j[&quot;R_safe&quot;])
+            )
+            i_strictly_better = (
+                (row_i[&quot;TSI_P&quot;] &gt; row_j[&quot;TSI_P&quot;]) or
+                (row_i[&quot;TSI_R&quot;] &gt; row_j[&quot;TSI_R&quot;]) or
+                (row_i[&quot;R_safe&quot;] &lt; row_j[&quot;R_safe&quot;])
+            )
+
+            if i_at_least_as_good and i_strictly_better:
+                dominates.append(row_j[&quot;encoder&quot;])
+
+        pareto_rows.append({
+            &quot;benchmark&quot;: spec.name,
+            &quot;encoder&quot;: row_i[&quot;encoder&quot;],
+            &quot;TSI_P&quot;: row_i[&quot;TSI_P&quot;],
+            &quot;TSI_R&quot;: row_i[&quot;TSI_R&quot;],
+            &quot;R_safe&quot;: row_i[&quot;R_safe&quot;],
+            &quot;utility&quot;: row_i[&quot;utility&quot;],
+            &quot;non_dominated&quot;: len(dominated_by) == 0,
+            &quot;dominated_by&quot;: &quot;, &quot;.join(dominated_by) if dominated_by else &quot;none&quot;,
+            &quot;dominates&quot;: &quot;, &quot;.join(dominates) if dominates else &quot;none&quot;,
+        })
+
+pareto_df = pd.DataFrame(pareto_rows)
+pareto_df = safe_round_df(
+    pareto_df,
+    [&quot;TSI_P&quot;, &quot;TSI_R&quot;, &quot;R_safe&quot;, &quot;utility&quot;],
+    ndigits=4
+)
+
+pareto_path = COMMENT3_DIR / &quot;Manuscript_Table_Pareto_Dominance.csv&quot;
+pareto_df.to_csv(pareto_path, index=False)
+
+print(&quot;Pareto dominance summary saved:&quot;)
+print(pareto_path)
+display(pareto_df)
+
+
+# ============================================================
+# Final output summary
+# ============================================================
+
+print(&quot;\n============================================================&quot;)
+print(&quot;Reviewer 2 Comment 1–3 post-processing complete.&quot;)
+print(&quot;All outputs were saved under:&quot;)
+print(OUTPUT_BASE)
+print(&quot;============================================================&quot;)
+
+print(&quot;\nComment 1 outputs:&quot;)
+for p in sorted(COMMENT1_DIR.glob(&quot;*&quot;)):
+    print(&quot; -&quot;, p.name)
+
+print(&quot;\nComment 2 outputs:&quot;)
+for p in sorted(COMMENT2_DIR.glob(&quot;*&quot;)):
+    print(&quot; -&quot;, p.name)
+
+print(&quot;\nComment 3 outputs:&quot;)
+for p in sorted(COMMENT3_DIR.glob(&quot;*&quot;)):
+    print(&quot; -&quot;, p.name)</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount(&quot;/content/drive&quot;, force_remount=True).
+BASE_DIR: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202
+OUTPUT_BASE: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs
+COMMENT1_DIR: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment1_coco_diagnostic_metrics
+COMMENT2_DIR: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI
+COMMENT3_DIR: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment3_pareto_dominance
+
+Required notebook objects are available.
+
+[Comment 1] Generating COCO clean-condition diagnostic metrics...
+  Encoder: rate
+  Encoder: sparse
+  Encoder: temporal
+  Encoder: optim
+
+COCO diagnostic metrics saved:
+/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/Manuscript_Table_COCO_Diagnostic_Metrics.csv
+</pre></div><div class="nb-out"><div class="nb-out-title">Output</div><pre class="nb-out-pre">   benchmark   encoder  n_test  accuracy  balanced_accuracy  macro_f1  \
+0  coco_4cls      rate    1000     0.301              0.301    0.2932   
+1  coco_4cls    sparse    1000     0.300              0.300    0.2892   
+2  coco_4cls  temporal    1000     0.304              0.304    0.2970   
+3  coco_4cls     optim    1000     0.300              0.300    0.2920   
+
+                        prediction_csv                confusion_matrix_csv  \
+0      COCO_clean_predictions_rate.csv      COCO_confusion_matrix_rate.csv   
+1    COCO_clean_predictions_sparse.csv    COCO_confusion_matrix_sparse.csv   
+2  COCO_clean_predictions_temporal.csv  COCO_confusion_matrix_temporal.csv   
+3     COCO_clean_predictions_optim.csv     COCO_confusion_matrix_optim.csv   
+
+                 classification_report_csv                confusion_matrix_png  
+0      COCO_classification_report_rate.csv      COCO_confusion_matrix_rate.png  
+1    COCO_classification_report_sparse.csv    COCO_confusion_matrix_sparse.png  
+2  COCO_classification_report_temporal.csv  COCO_confusion_matrix_temporal.png  
+3     COCO_classification_report_optim.csv     COCO_confusion_matrix_optim.png  </pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">
+[Comment 2] Generating uncertainty summaries...
+Accuracy CI table saved:
+/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/Accuracy_Wilson_CI_ByEncoderOpLevel.csv
+
+Utility condition-level bootstrap CI table saved:
+/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/Manuscript_Table_Utility_ConditionBootstrap_CI.csv
+</pre></div><div class="nb-out"><div class="nb-out-title">Output</div><pre class="nb-out-pre">        benchmark   encoder  n_conditions  n_bootstrap  TSI_P_mean  \
+0  emnist_letters      rate            20         5000      0.8318   
+1  emnist_letters    sparse            20         5000      0.7653   
+2  emnist_letters  temporal            20         5000      0.8178   
+3  emnist_letters     optim            20         5000      0.8342   
+4       coco_4cls      rate            20         5000      0.3780   
+5       coco_4cls    sparse            20         5000      0.3742   
+6       coco_4cls  temporal            20         5000      0.3798   
+7       coco_4cls     optim            20         5000      0.3721   
+
+   TSI_R_mean  R_safe_mean  utility_mean  utility_CI95_low  utility_CI95_high  \
+0      0.6427       0.1609        1.3136            1.0366             1.5263   
+1      0.6495       0.0000        1.4148            1.1112             1.6240   
+2      0.6160       4.0906       -2.6568           -4.1616            -1.0803   
+3      0.6039       0.1438        1.2944            1.0231             1.4940   
+4      0.5674       0.3156        0.6298            0.4549             0.7686   
+5      0.6486       0.0000        1.0228            0.8338             1.1278   
+6      0.6001       0.6016        0.3784           -0.5489             0.7731   
+7      0.5436       0.3125        0.6032            0.4530             0.7322   
+
+                                           CI_method  
+0  Condition-level percentile bootstrap over non-...  
+1  Condition-level percentile bootstrap over non-...  
+2  Condition-level percentile bootstrap over non-...  
+3  Condition-level percentile bootstrap over non-...  
+4  Condition-level percentile bootstrap over non-...  
+5  Condition-level percentile bootstrap over non-...  
+6  Condition-level percentile bootstrap over non-...  
+7  Condition-level percentile bootstrap over non-...  </pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">
+[Comment 3] Generating Pareto dominance summary...
+Pareto dominance summary saved:
+/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment3_pareto_dominance/Manuscript_Table_Pareto_Dominance.csv
+</pre></div><div class="nb-out"><div class="nb-out-title">Output</div><pre class="nb-out-pre">        benchmark   encoder   TSI_P   TSI_R  R_safe  utility  non_dominated  \
+0  emnist_letters      rate  0.8318  0.6427  0.1609   1.3136           True   
+1  emnist_letters    sparse  0.7653  0.6495  0.0000   1.4148           True   
+2  emnist_letters  temporal  0.8178  0.6160  4.0906  -2.6568          False   
+3  emnist_letters     optim  0.8342  0.6039  0.1438   1.2944           True   
+4       coco_4cls      rate  0.3780  0.5674  0.3156   0.6298           True   
+5       coco_4cls    sparse  0.3742  0.6486  0.0000   1.0228           True   
+6       coco_4cls  temporal  0.3798  0.6001  0.6016   0.3784           True   
+7       coco_4cls     optim  0.3721  0.5436  0.3125   0.6032          False   
+
+  dominated_by dominates  
+0         none  temporal  
+1         none      none  
+2         rate      none  
+3         none      none  
+4         none      none  
+5         none     optim  
+6         none      none  
+7       sparse      none  </pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">
+============================================================
+Reviewer 2 Comment 1–3 post-processing complete.
+All outputs were saved under:
+/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs
+============================================================
+
+Comment 1 outputs:
+ - COCO_classification_report_optim.csv
+ - COCO_classification_report_rate.csv
+ - COCO_classification_report_sparse.csv
+ - COCO_classification_report_temporal.csv
+ - COCO_clean_predictions_optim.csv
+ - COCO_clean_predictions_rate.csv
+ - COCO_clean_predictions_sparse.csv
+ - COCO_clean_predictions_temporal.csv
+ - COCO_confusion_matrix_optim.csv
+ - COCO_confusion_matrix_optim.png
+ - COCO_confusion_matrix_rate.csv
+ - COCO_confusion_matrix_rate.png
+ - COCO_confusion_matrix_sparse.csv
+ - COCO_confusion_matrix_sparse.png
+ - COCO_confusion_matrix_temporal.csv
+ - COCO_confusion_matrix_temporal.png
+ - Manuscript_Table_COCO_Diagnostic_Metrics.csv
+
+Comment 2 outputs:
+ - Accuracy_Wilson_CI_ByEncoderOpLevel.csv
+ - Manuscript_Table_Utility_ConditionBootstrap_CI.csv
+
+Comment 3 outputs:
+ - Manuscript_Table_Pareto_Dominance.csv
+</pre></div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 18</h2><div class="nb-md"><p>Issue1_2_WeightSensitivity  0612</p>
+</div></section>
+<section class="nb-cell"><h2 class="nb-cell-h">셀 19</h2><div class="nb-in"><span class="nb-in-label">In [ ]</span><div class="nb-in-label">코드</div><pre><code class="language-python"># Cell 14
+# ============================================================
+# Issue 2 Complete Add-on Cell
+# Bootstrap CI + Pareto frontier + utility weight sensitivity
+#
+# Utility convention:
+#   U = lambda_P * P + lambda_R * R + lambda_S * S
+#
+# where:
+#   P = TSI_P  : integrated performance score
+#   R = TSI_R  : topological representational stability score
+#   S = 1 - R_safe : safety score, i.e., complement of residual proxy safety burden
+#
+# Run this cell AFTER the existing Reviewer 2 post-processing cell.
+# ============================================================
+
+from pathlib import Path
+import sys
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score
+)
+
+# ------------------------------------------------------------
+# 0. Output directory setup
+# ------------------------------------------------------------
+
+IN_COLAB = &quot;google.colab&quot; in sys.modules
+
+try:
+    BASE_DIR = Path(ROOT)
+except NameError:
+    if IN_COLAB:
+        BASE_DIR = Path(&quot;/content/drive/MyDrive/RunPackageC_EMNIST_COCO&quot;)
+    else:
+        BASE_DIR = Path(r&quot;G:\내 드라이브\RunPackageC_EMNIST_COCO&quot;)
+
+OUTPUT_BASE = BASE_DIR / &quot;reviewer2_comment_outputs&quot;
+
+COMMENT1_DIR = OUTPUT_BASE / &quot;comment1_coco_diagnostic_metrics&quot;
+COMMENT2_DIR = OUTPUT_BASE / &quot;comment2_uncertainty_bootstrap_CI&quot;
+COMMENT3_DIR = OUTPUT_BASE / &quot;comment3_pareto_frontier&quot;
+COMMENT4_DIR = OUTPUT_BASE / &quot;comment4_weight_sensitivity&quot;
+
+for d in [COMMENT2_DIR, COMMENT3_DIR, COMMENT4_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
+
+print(&quot;BASE_DIR:&quot;, BASE_DIR)
+print(&quot;OUTPUT_BASE:&quot;, OUTPUT_BASE)
+
+
+# ============================================================
+# 1. Sample-level bootstrap CI for COCO clean predictions
+# ============================================================
+
+print(&quot;\n[Issue 2A] Generating sample-level bootstrap CIs for COCO clean predictions...&quot;)
+
+N_BOOT = 5000
+RNG_SEED = 2026
+rng = np.random.default_rng(RNG_SEED)
+
+def compute_metrics_from_predictions(df):
+    y_true = df[&quot;y_true&quot;].to_numpy()
+    y_pred = df[&quot;y_pred&quot;].to_numpy()
+
+    return {
+        &quot;accuracy&quot;: accuracy_score(y_true, y_pred),
+        &quot;balanced_accuracy&quot;: balanced_accuracy_score(y_true, y_pred),
+        &quot;macro_f1&quot;: f1_score(y_true, y_pred, average=&quot;macro&quot;, zero_division=0),
+    }
+
+def stratified_bootstrap_prediction_df(df, rng):
+    parts = []
+    for _, g in df.groupby(&quot;y_true&quot;):
+        sampled_idx = rng.choice(g.index.to_numpy(), size=len(g), replace=True)
+        parts.append(df.loc[sampled_idx])
+    return pd.concat(parts, axis=0, ignore_index=True)
+
+bootstrap_rows = []
+
+pred_files = sorted(COMMENT1_DIR.glob(&quot;COCO_clean_predictions_*.csv&quot;))
+
+if len(pred_files) == 0:
+    raise FileNotFoundError(
+        f&quot;No COCO clean prediction files found in {COMMENT1_DIR}. &quot;
+        &quot;Run the existing Reviewer 2 post-processing cell first.&quot;
+    )
+
+for pred_path in pred_files:
+    enc = pred_path.stem.replace(&quot;COCO_clean_predictions_&quot;, &quot;&quot;)
+    df_pred = pd.read_csv(pred_path)
+
+    required_cols = {&quot;y_true&quot;, &quot;y_pred&quot;}
+    if not required_cols.issubset(df_pred.columns):
+        raise RuntimeError(
+            f&quot;{pred_path.name} does not contain required columns: {required_cols}&quot;
+        )
+
+    point = compute_metrics_from_predictions(df_pred)
+
+    boot_values = {
+        &quot;accuracy&quot;: [],
+        &quot;balanced_accuracy&quot;: [],
+        &quot;macro_f1&quot;: [],
+    }
+
+    for _ in range(N_BOOT):
+        bs = stratified_bootstrap_prediction_df(df_pred, rng)
+        m = compute_metrics_from_predictions(bs)
+        for k in boot_values:
+            boot_values[k].append(m[k])
+
+    for metric_name, values in boot_values.items():
+        values = np.asarray(values, dtype=float)
+        bootstrap_rows.append({
+            &quot;benchmark&quot;: &quot;coco_4cls&quot;,
+            &quot;encoder&quot;: enc,
+            &quot;metric&quot;: metric_name,
+            &quot;estimate&quot;: point[metric_name],
+            &quot;CI95_low&quot;: np.percentile(values, 2.5),
+            &quot;CI95_high&quot;: np.percentile(values, 97.5),
+            &quot;n_test&quot;: len(df_pred),
+            &quot;n_bootstrap&quot;: N_BOOT,
+            &quot;bootstrap_unit&quot;: &quot;test sample&quot;,
+            &quot;bootstrap_type&quot;: &quot;stratified percentile bootstrap by true class&quot;,
+        })
+
+bootstrap_ci_df = pd.DataFrame(bootstrap_rows)
+
+bootstrap_ci_df_round = bootstrap_ci_df.copy()
+for c in [&quot;estimate&quot;, &quot;CI95_low&quot;, &quot;CI95_high&quot;]:
+    bootstrap_ci_df_round[c] = bootstrap_ci_df_round[c].astype(float).round(4)
+
+bootstrap_ci_path = COMMENT2_DIR / &quot;Manuscript_Table_COCO_SampleBootstrap_CI.csv&quot;
+bootstrap_ci_df_round.to_csv(bootstrap_ci_path, index=False)
+
+print(&quot;Saved:&quot;, bootstrap_ci_path)
+display(bootstrap_ci_df_round)
+
+
+# ============================================================
+# 2. Pareto frontier analysis from Table10_TriObjective_Summary
+# ============================================================
+
+print(&quot;\n[Issue 2B] Generating Pareto frontier analysis...&quot;)
+
+def is_non_dominated(df, maximize_cols, minimize_cols):
+    non_dominated = []
+
+    for i, row_i in df.iterrows():
+        dominated = False
+
+        for j, row_j in df.iterrows():
+            if i == j:
+                continue
+
+            at_least_as_good = True
+            strictly_better = False
+
+            for c in maximize_cols:
+                if row_j[c] &lt; row_i[c]:
+                    at_least_as_good = False
+                    break
+                if row_j[c] &gt; row_i[c]:
+                    strictly_better = True
+
+            if not at_least_as_good:
+                continue
+
+            for c in minimize_cols:
+                if row_j[c] &gt; row_i[c]:
+                    at_least_as_good = False
+                    break
+                if row_j[c] &lt; row_i[c]:
+                    strictly_better = True
+
+            if at_least_as_good and strictly_better:
+                dominated = True
+                break
+
+        non_dominated.append(not dominated)
+
+    return non_dominated
+
+pareto_rows = []
+
+for spec in BENCHMARKS:
+    dirs = benchmark_dirs(spec.name)
+    tri_path = dirs[&quot;tab&quot;] / &quot;Table10_TriObjective_Summary.csv&quot;
+
+    if not tri_path.exists():
+        print(f&quot;Missing tri-objective summary: {tri_path}&quot;)
+        continue
+
+    df_tri = pd.read_csv(tri_path).copy()
+
+    required_cols = {&quot;encoder&quot;, &quot;TSI_P&quot;, &quot;TSI_R&quot;, &quot;R_safe&quot;}
+    if not required_cols.issubset(df_tri.columns):
+        raise RuntimeError(
+            f&quot;{tri_path} is missing required columns: {required_cols - set(df_tri.columns)}&quot;
+        )
+
+    df_tri[&quot;benchmark&quot;] = spec.name
+    df_tri[&quot;non_dominated&quot;] = is_non_dominated(
+        df_tri,
+        maximize_cols=[&quot;TSI_P&quot;, &quot;TSI_R&quot;],
+        minimize_cols=[&quot;R_safe&quot;]
+    )
+
+    dominated_by_list = []
+
+    for i, row_i in df_tri.iterrows():
+        dominated_by = []
+
+        for j, row_j in df_tri.iterrows():
+            if i == j:
+                continue
+
+            j_at_least_as_good = (
+                (row_j[&quot;TSI_P&quot;] &gt;= row_i[&quot;TSI_P&quot;]) and
+                (row_j[&quot;TSI_R&quot;] &gt;= row_i[&quot;TSI_R&quot;]) and
+                (row_j[&quot;R_safe&quot;] &lt;= row_i[&quot;R_safe&quot;])
+            )
+            j_strictly_better = (
+                (row_j[&quot;TSI_P&quot;] &gt; row_i[&quot;TSI_P&quot;]) or
+                (row_j[&quot;TSI_R&quot;] &gt; row_i[&quot;TSI_R&quot;]) or
+                (row_j[&quot;R_safe&quot;] &lt; row_i[&quot;R_safe&quot;])
+            )
+
+            if j_at_least_as_good and j_strictly_better:
+                dominated_by.append(row_j[&quot;encoder&quot;])
+
+        dominated_by_list.append(&quot;, &quot;.join(dominated_by) if dominated_by else &quot;none&quot;)
+
+    df_tri[&quot;dominated_by&quot;] = dominated_by_list
+
+    pareto_rows.append(
+        df_tri[[
+            &quot;benchmark&quot;,
+            &quot;encoder&quot;,
+            &quot;TSI_P&quot;,
+            &quot;TSI_R&quot;,
+            &quot;R_safe&quot;,
+            &quot;non_dominated&quot;,
+            &quot;dominated_by&quot;
+        ]]
+    )
+
+pareto_df = pd.concat(pareto_rows, ignore_index=True)
+
+pareto_df_round = pareto_df.copy()
+for c in [&quot;TSI_P&quot;, &quot;TSI_R&quot;, &quot;R_safe&quot;]:
+    pareto_df_round[c] = pareto_df_round[c].astype(float).round(4)
+
+pareto_table_path = COMMENT3_DIR / &quot;Manuscript_Table_Pareto_Frontier.csv&quot;
+pareto_df_round.to_csv(pareto_table_path, index=False)
+
+print(&quot;Saved:&quot;, pareto_table_path)
+display(pareto_df_round)
+
+# Pareto frontier figure for COCO only.
+coco_pareto = pareto_df[pareto_df[&quot;benchmark&quot;] == &quot;coco_4cls&quot;].copy()
+
+if len(coco_pareto) &gt; 0:
+    fig, ax = plt.subplots(figsize=(6.2, 4.8))
+
+    dominated = coco_pareto[~coco_pareto[&quot;non_dominated&quot;]]
+    nondom = coco_pareto[coco_pareto[&quot;non_dominated&quot;]]
+
+    ax.scatter(
+        dominated[&quot;R_safe&quot;],
+        dominated[&quot;TSI_P&quot;],
+        marker=&quot;o&quot;,
+        label=&quot;Dominated&quot;
+    )
+    ax.scatter(
+        nondom[&quot;R_safe&quot;],
+        nondom[&quot;TSI_P&quot;],
+        marker=&quot;s&quot;,
+        label=&quot;Pareto frontier&quot;
+    )
+
+    for _, row in coco_pareto.iterrows():
+        ax.annotate(
+            str(row[&quot;encoder&quot;]),
+            (row[&quot;R_safe&quot;], row[&quot;TSI_P&quot;]),
+            textcoords=&quot;offset points&quot;,
+            xytext=(5, 5),
+            fontsize=9
+        )
+
+    ax.set_xlabel(&quot;Residual proxy safety burden, R_safe (lower is better)&quot;)
+    ax.set_ylabel(&quot;Integrated performance, TSI_P (higher is better)&quot;)
+    ax.set_title(&quot;COCO-derived Pareto frontier projection&quot;)
+    ax.legend()
+    fig.tight_layout()
+
+    pareto_fig_path = COMMENT3_DIR / &quot;Figure_Pareto_Frontier_COCO.png&quot;
+    fig.savefig(pareto_fig_path, dpi=600)
+    plt.close(fig)
+
+    print(&quot;Saved:&quot;, pareto_fig_path)
+
+
+# ============================================================
+# 3. Utility weight sensitivity analysis
+# ============================================================
+
+print(&quot;\n[Issue 2C] Generating utility weight sensitivity analysis...&quot;)
+
+weight_scenarios = [
+    {
+        &quot;scenario&quot;: &quot;balanced&quot;,
+        &quot;lambda_P&quot;: 1/3,
+        &quot;lambda_R&quot;: 1/3,
+        &quot;lambda_S&quot;: 1/3,
+        &quot;interpretation&quot;: &quot;equal weighting&quot;,
+    },
+    {
+        &quot;scenario&quot;: &quot;performance_dominant&quot;,
+        &quot;lambda_P&quot;: 0.6,
+        &quot;lambda_R&quot;: 0.2,
+        &quot;lambda_S&quot;: 0.2,
+        &quot;interpretation&quot;: &quot;performance-prioritized&quot;,
+    },
+    {
+        &quot;scenario&quot;: &quot;stability_dominant&quot;,
+        &quot;lambda_P&quot;: 0.2,
+        &quot;lambda_R&quot;: 0.6,
+        &quot;lambda_S&quot;: 0.2,
+        &quot;interpretation&quot;: &quot;topological representational stability-prioritized&quot;,
+    },
+    {
+        &quot;scenario&quot;: &quot;safety_dominant&quot;,
+        &quot;lambda_P&quot;: 0.2,
+        &quot;lambda_R&quot;: 0.2,
+        &quot;lambda_S&quot;: 0.6,
+        &quot;interpretation&quot;: &quot;safety-score-prioritized&quot;,
+    },
+    {
+        &quot;scenario&quot;: &quot;performance_safety&quot;,
+        &quot;lambda_P&quot;: 0.45,
+        &quot;lambda_R&quot;: 0.10,
+        &quot;lambda_S&quot;: 0.45,
+        &quot;interpretation&quot;: &quot;performance-safety trade-off&quot;,
+    },
+]
+
+weight_rows = []
+
+for spec in BENCHMARKS:
+    dirs = benchmark_dirs(spec.name)
+    tri_path = dirs[&quot;tab&quot;] / &quot;Table10_TriObjective_Summary.csv&quot;
+
+    if not tri_path.exists():
+        print(f&quot;Missing tri-objective summary: {tri_path}&quot;)
+        continue
+
+    df_tri = pd.read_csv(tri_path).copy()
+
+    required_cols = {&quot;encoder&quot;, &quot;TSI_P&quot;, &quot;TSI_R&quot;, &quot;R_safe&quot;}
+    if not required_cols.issubset(df_tri.columns):
+        raise RuntimeError(
+            f&quot;{tri_path} is missing required columns: {required_cols - set(df_tri.columns)}&quot;
+        )
+
+    # Convert original tri-objective quantities into manuscript utility components.
+    # P: performance score, larger is better.
+    # R: topological representational stability score, larger is better.
+    # S: safety score, larger is better.
+    #    S is defined as the complement of residual proxy safety burden.
+    df_tri[&quot;P&quot;] = df_tri[&quot;TSI_P&quot;]
+    df_tri[&quot;R&quot;] = df_tri[&quot;TSI_R&quot;]
+    df_tri[&quot;S&quot;] = 1.0 - df_tri[&quot;R_safe&quot;]
+
+    for scenario in weight_scenarios:
+        lam_P = scenario[&quot;lambda_P&quot;]
+        lam_R = scenario[&quot;lambda_R&quot;]
+        lam_S = scenario[&quot;lambda_S&quot;]
+
+        temp = df_tri.copy()
+        temp[&quot;benchmark&quot;] = spec.name
+        temp[&quot;scenario&quot;] = scenario[&quot;scenario&quot;]
+        temp[&quot;lambda_P&quot;] = lam_P
+        temp[&quot;lambda_R&quot;] = lam_R
+        temp[&quot;lambda_S&quot;] = lam_S
+        temp[&quot;interpretation&quot;] = scenario[&quot;interpretation&quot;]
+
+        # Manuscript-consistent utility:
+        # U = lambda_P * P + lambda_R * R + lambda_S * S
+        temp[&quot;weighted_utility&quot;] = (
+            lam_P * temp[&quot;P&quot;]
+            + lam_R * temp[&quot;R&quot;]
+            + lam_S * temp[&quot;S&quot;]
+        )
+
+        temp = temp.sort_values(&quot;weighted_utility&quot;, ascending=False).reset_index(drop=True)
+        temp[&quot;rank&quot;] = np.arange(1, len(temp) + 1)
+
+        weight_rows.append(
+            temp[
+                [
+                    &quot;benchmark&quot;,
+                    &quot;scenario&quot;,
+                    &quot;interpretation&quot;,
+                    &quot;lambda_P&quot;,
+                    &quot;lambda_R&quot;,
+                    &quot;lambda_S&quot;,
+                    &quot;encoder&quot;,
+                    &quot;P&quot;,
+                    &quot;R&quot;,
+                    &quot;S&quot;,
+                    &quot;TSI_P&quot;,
+                    &quot;TSI_R&quot;,
+                    &quot;R_safe&quot;,
+                    &quot;weighted_utility&quot;,
+                    &quot;rank&quot;,
+                ]
+            ]
+        )
+
+weight_df = pd.concat(weight_rows, ignore_index=True)
+
+weight_df_round = weight_df.copy()
+for c in [
+    &quot;lambda_P&quot;,
+    &quot;lambda_R&quot;,
+    &quot;lambda_S&quot;,
+    &quot;P&quot;,
+    &quot;R&quot;,
+    &quot;S&quot;,
+    &quot;TSI_P&quot;,
+    &quot;TSI_R&quot;,
+    &quot;R_safe&quot;,
+    &quot;weighted_utility&quot;
+]:
+    weight_df_round[c] = weight_df_round[c].astype(float).round(4)
+
+weight_table_path = COMMENT4_DIR / &quot;Manuscript_Table_Utility_WeightSensitivity.csv&quot;
+weight_df_round.to_csv(weight_table_path, index=False)
+
+print(&quot;Saved:&quot;, weight_table_path)
+display(weight_df_round)
+
+# Compact rank table for manuscript use.
+rank_table = weight_df.pivot_table(
+    index=[&quot;benchmark&quot;, &quot;scenario&quot;],
+    columns=&quot;rank&quot;,
+    values=&quot;encoder&quot;,
+    aggfunc=&quot;first&quot;
+).reset_index()
+
+rank_table.columns = [
+    &quot;benchmark&quot;,
+    &quot;scenario&quot;,
+] + [f&quot;rank_{int(c)}&quot; for c in rank_table.columns[2:]]
+
+rank_table_path = COMMENT4_DIR / &quot;Manuscript_Table_Utility_WeightSensitivity_RankSummary.csv&quot;
+rank_table.to_csv(rank_table_path, index=False)
+
+print(&quot;Saved:&quot;, rank_table_path)
+display(rank_table)
+
+# Figure for COCO weight sensitivity.
+coco_weight = weight_df[weight_df[&quot;benchmark&quot;] == &quot;coco_4cls&quot;].copy()
+
+if len(coco_weight) &gt; 0:
+    scenarios = list(coco_weight[&quot;scenario&quot;].unique())
+    encoders = list(coco_weight[&quot;encoder&quot;].unique())
+
+    x = np.arange(len(scenarios))
+    width = 0.8 / max(1, len(encoders))
+
+    fig, ax = plt.subplots(figsize=(8.4, 4.8))
+
+    for k, enc in enumerate(encoders):
+        vals = []
+        for sc in scenarios:
+            d = coco_weight[
+                (coco_weight[&quot;scenario&quot;] == sc)
+                &amp; (coco_weight[&quot;encoder&quot;] == enc)
+            ]
+            vals.append(float(d[&quot;weighted_utility&quot;].iloc[0]) if len(d) else np.nan)
+
+        ax.bar(x + k * width, vals, width=width, label=enc)
+
+    ax.set_xticks(x + width * (len(encoders) - 1) / 2)
+    ax.set_xticklabels(scenarios, rotation=30, ha=&quot;right&quot;)
+    ax.set_ylabel(&quot;Weighted utility, U&quot;)
+    ax.set_title(&quot;COCO-derived utility weight sensitivity&quot;)
+    ax.legend()
+    fig.tight_layout()
+
+    weight_fig_path = COMMENT4_DIR / &quot;Figure_Utility_WeightSensitivity_COCO.png&quot;
+    fig.savefig(weight_fig_path, dpi=600)
+    plt.close(fig)
+
+    print(&quot;Saved:&quot;, weight_fig_path)
+
+
+print(&quot;\nIssue 2 complete outputs generated:&quot;)
+print(&quot; -&quot;, bootstrap_ci_path)
+print(&quot; -&quot;, pareto_table_path)
+print(&quot; -&quot;, COMMENT3_DIR / &quot;Figure_Pareto_Frontier_COCO.png&quot;)
+print(&quot; -&quot;, weight_table_path)
+print(&quot; -&quot;, rank_table_path)
+print(&quot; -&quot;, COMMENT4_DIR / &quot;Figure_Utility_WeightSensitivity_COCO.png&quot;)</code></pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">BASE_DIR: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202
+OUTPUT_BASE: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs
+
+[Issue 2A] Generating sample-level bootstrap CIs for COCO clean predictions...
+Saved: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/Manuscript_Table_COCO_SampleBootstrap_CI.csv
+</pre></div><div class="nb-out"><div class="nb-out-title">Output</div><pre class="nb-out-pre">    benchmark   encoder             metric  estimate  CI95_low  CI95_high  \
+0   coco_4cls     optim           accuracy    0.3000    0.2730     0.3270   
+1   coco_4cls     optim  balanced_accuracy    0.3000    0.2730     0.3270   
+2   coco_4cls     optim           macro_f1    0.2920    0.2644     0.3199   
+3   coco_4cls      rate           accuracy    0.3010    0.2730     0.3290   
+4   coco_4cls      rate  balanced_accuracy    0.3010    0.2730     0.3290   
+5   coco_4cls      rate           macro_f1    0.2932    0.2655     0.3210   
+6   coco_4cls    sparse           accuracy    0.3000    0.2720     0.3280   
+7   coco_4cls    sparse  balanced_accuracy    0.3000    0.2720     0.3280   
+8   coco_4cls    sparse           macro_f1    0.2892    0.2607     0.3166   
+9   coco_4cls  temporal           accuracy    0.3040    0.2760     0.3320   
+10  coco_4cls  temporal  balanced_accuracy    0.3040    0.2760     0.3320   
+11  coco_4cls  temporal           macro_f1    0.2970    0.2694     0.3252   
+
+    n_test  n_bootstrap bootstrap_unit  \
+0     1000         5000    test sample   
+1     1000         5000    test sample   
+2     1000         5000    test sample   
+3     1000         5000    test sample   
+4     1000         5000    test sample   
+5     1000         5000    test sample   
+6     1000         5000    test sample   
+7     1000         5000    test sample   
+8     1000         5000    test sample   
+9     1000         5000    test sample   
+10    1000         5000    test sample   
+11    1000         5000    test sample   
+
+                                   bootstrap_type  
+0   stratified percentile bootstrap by true class  
+1   stratified percentile bootstrap by true class  
+2   stratified percentile bootstrap by true class  
+3   stratified percentile bootstrap by true class  
+4   stratified percentile bootstrap by true class  
+5   stratified percentile bootstrap by true class  
+6   stratified percentile bootstrap by true class  
+7   stratified percentile bootstrap by true class  
+8   stratified percentile bootstrap by true class  
+9   stratified percentile bootstrap by true class  
+10  stratified percentile bootstrap by true class  
+11  stratified percentile bootstrap by true class  </pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">
+[Issue 2B] Generating Pareto frontier analysis...
+Saved: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment3_pareto_frontier/Manuscript_Table_Pareto_Frontier.csv
+</pre></div><div class="nb-out"><div class="nb-out-title">Output</div><pre class="nb-out-pre">        benchmark   encoder   TSI_P   TSI_R  R_safe  non_dominated  \
+0  emnist_letters      rate  0.8318  0.6427  0.1609           True   
+1  emnist_letters    sparse  0.7653  0.6495  0.0000           True   
+2  emnist_letters  temporal  0.8178  0.6160  4.0906          False   
+3  emnist_letters     optim  0.8342  0.6039  0.1438           True   
+4       coco_4cls      rate  0.3780  0.5674  0.3156           True   
+5       coco_4cls    sparse  0.3742  0.6486  0.0000           True   
+6       coco_4cls  temporal  0.3798  0.6001  0.6016           True   
+7       coco_4cls     optim  0.3721  0.5436  0.3125          False   
+
+  dominated_by  
+0         none  
+1         none  
+2         rate  
+3         none  
+4         none  
+5         none  
+6         none  
+7       sparse  </pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">Saved: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment3_pareto_frontier/Figure_Pareto_Frontier_COCO.png
+
+[Issue 2C] Generating utility weight sensitivity analysis...
+Saved: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment4_weight_sensitivity/Manuscript_Table_Utility_WeightSensitivity.csv
+</pre></div><div class="nb-out"><div class="nb-out-title">Output</div><pre class="nb-out-pre">         benchmark              scenario  \
+0   emnist_letters              balanced   
+1   emnist_letters              balanced   
+2   emnist_letters              balanced   
+3   emnist_letters              balanced   
+4   emnist_letters  performance_dominant   
+5   emnist_letters  performance_dominant   
+6   emnist_letters  performance_dominant   
+7   emnist_letters  performance_dominant   
+8   emnist_letters    stability_dominant   
+9   emnist_letters    stability_dominant   
+10  emnist_letters    stability_dominant   
+11  emnist_letters    stability_dominant   
+12  emnist_letters       safety_dominant   
+13  emnist_letters       safety_dominant   
+14  emnist_letters       safety_dominant   
+15  emnist_letters       safety_dominant   
+16  emnist_letters    performance_safety   
+17  emnist_letters    performance_safety   
+18  emnist_letters    performance_safety   
+19  emnist_letters    performance_safety   
+20       coco_4cls              balanced   
+21       coco_4cls              balanced   
+22       coco_4cls              balanced   
+23       coco_4cls              balanced   
+24       coco_4cls  performance_dominant   
+25       coco_4cls  performance_dominant   
+26       coco_4cls  performance_dominant   
+27       coco_4cls  performance_dominant   
+28       coco_4cls    stability_dominant   
+29       coco_4cls    stability_dominant   
+30       coco_4cls    stability_dominant   
+31       coco_4cls    stability_dominant   
+32       coco_4cls       safety_dominant   
+33       coco_4cls       safety_dominant   
+34       coco_4cls       safety_dominant   
+35       coco_4cls       safety_dominant   
+36       coco_4cls    performance_safety   
+37       coco_4cls    performance_safety   
+38       coco_4cls    performance_safety   
+39       coco_4cls    performance_safety   
+
+                                       interpretation  lambda_P  lambda_R  \
+0                                     equal weighting    0.3333    0.3333   
+1                                     equal weighting    0.3333    0.3333   
+2                                     equal weighting    0.3333    0.3333   
+3                                     equal weighting    0.3333    0.3333   
+4                             performance-prioritized    0.6000    0.2000   
+5                             performance-prioritized    0.6000    0.2000   
+6                             performance-prioritized    0.6000    0.2000   
+7                             performance-prioritized    0.6000    0.2000   
+8   topological representational stability-priorit...    0.2000    0.6000   
+9   topological representational stability-priorit...    0.2000    0.6000   
+10  topological representational stability-priorit...    0.2000    0.6000   
+11  topological representational stability-priorit...    0.2000    0.6000   
+12                           safety-score-prioritized    0.2000    0.2000   
+13                           safety-score-prioritized    0.2000    0.2000   
+14                           safety-score-prioritized    0.2000    0.2000   
+15                           safety-score-prioritized    0.2000    0.2000   
+16                       performance-safety trade-off    0.4500    0.1000   
+17                       performance-safety trade-off    0.4500    0.1000   
+18                       performance-safety trade-off    0.4500    0.1000   
+19                       performance-safety trade-off    0.4500    0.1000   
+20                                    equal weighting    0.3333    0.3333   
+21                                    equal weighting    0.3333    0.3333   
+22                                    equal weighting    0.3333    0.3333   
+23                                    equal weighting    0.3333    0.3333   
+24                            performance-prioritized    0.6000    0.2000   
+25                            performance-prioritized    0.6000    0.2000   
+26                            performance-prioritized    0.6000    0.2000   
+27                            performance-prioritized    0.6000    0.2000   
+28  topological representational stability-priorit...    0.2000    0.6000   
+29  topological representational stability-priorit...    0.2000    0.6000   
+30  topological representational stability-priorit...    0.2000    0.6000   
+31  topological representational stability-priorit...    0.2000    0.6000   
+32                           safety-score-prioritized    0.2000    0.2000   
+33                           safety-score-prioritized    0.2000    0.2000   
+34                           safety-score-prioritized    0.2000    0.2000   
+35                           safety-score-prioritized    0.2000    0.2000   
+36                       performance-safety trade-off    0.4500    0.1000   
+37                       performance-safety trade-off    0.4500    0.1000   
+38                       performance-safety trade-off    0.4500    0.1000   
+39                       performance-safety trade-off    0.4500    0.1000   
+
+    lambda_S   encoder       P       R       S   TSI_P   TSI_R  R_safe  \
+0     0.3333    sparse  0.7653  0.6495  1.0000  0.7653  0.6495  0.0000   
+1     0.3333      rate  0.8318  0.6427  0.8391  0.8318  0.6427  0.1609   
+2     0.3333     optim  0.8342  0.6039  0.8562  0.8342  0.6039  0.1438   
+3     0.3333  temporal  0.8178  0.6160 -3.0906  0.8178  0.6160  4.0906   
+4     0.2000      rate  0.8318  0.6427  0.8391  0.8318  0.6427  0.1609   
+5     0.2000     optim  0.8342  0.6039  0.8562  0.8342  0.6039  0.1438   
+6     0.2000    sparse  0.7653  0.6495  1.0000  0.7653  0.6495  0.0000   
+7     0.2000  temporal  0.8178  0.6160 -3.0906  0.8178  0.6160  4.0906   
+8     0.2000    sparse  0.7653  0.6495  1.0000  0.7653  0.6495  0.0000   
+9     0.2000      rate  0.8318  0.6427  0.8391  0.8318  0.6427  0.1609   
+10    0.2000     optim  0.8342  0.6039  0.8562  0.8342  0.6039  0.1438   
+11    0.2000  temporal  0.8178  0.6160 -3.0906  0.8178  0.6160  4.0906   
+12    0.6000    sparse  0.7653  0.6495  1.0000  0.7653  0.6495  0.0000   
+13    0.6000     optim  0.8342  0.6039  0.8562  0.8342  0.6039  0.1438   
+14    0.6000      rate  0.8318  0.6427  0.8391  0.8318  0.6427  0.1609   
+15    0.6000  temporal  0.8178  0.6160 -3.0906  0.8178  0.6160  4.0906   
+16    0.4500    sparse  0.7653  0.6495  1.0000  0.7653  0.6495  0.0000   
+17    0.4500     optim  0.8342  0.6039  0.8562  0.8342  0.6039  0.1438   
+18    0.4500      rate  0.8318  0.6427  0.8391  0.8318  0.6427  0.1609   
+19    0.4500  temporal  0.8178  0.6160 -3.0906  0.8178  0.6160  4.0906   
+20    0.3333    sparse  0.3742  0.6486  1.0000  0.3742  0.6486  0.0000   
+21    0.3333      rate  0.3780  0.5674  0.6844  0.3780  0.5674  0.3156   
+22    0.3333     optim  0.3721  0.5436  0.6875  0.3721  0.5436  0.3125   
+23    0.3333  temporal  0.3798  0.6001  0.3984  0.3798  0.6001  0.6016   
+24    0.2000    sparse  0.3742  0.6486  1.0000  0.3742  0.6486  0.0000   
+25    0.2000      rate  0.3780  0.5674  0.6844  0.3780  0.5674  0.3156   
+26    0.2000     optim  0.3721  0.5436  0.6875  0.3721  0.5436  0.3125   
+27    0.2000  temporal  0.3798  0.6001  0.3984  0.3798  0.6001  0.6016   
+28    0.2000    sparse  0.3742  0.6486  1.0000  0.3742  0.6486  0.0000   
+29    0.2000      rate  0.3780  0.5674  0.6844  0.3780  0.5674  0.3156   
+30    0.2000     optim  0.3721  0.5436  0.6875  0.3721  0.5436  0.3125   
+31    0.2000  temporal  0.3798  0.6001  0.3984  0.3798  0.6001  0.6016   
+32    0.6000    sparse  0.3742  0.6486  1.0000  0.3742  0.6486  0.0000   
+33    0.6000      rate  0.3780  0.5674  0.6844  0.3780  0.5674  0.3156   
+34    0.6000     optim  0.3721  0.5436  0.6875  0.3721  0.5436  0.3125   
+35    0.6000  temporal  0.3798  0.6001  0.3984  0.3798  0.6001  0.6016   
+36    0.4500    sparse  0.3742  0.6486  1.0000  0.3742  0.6486  0.0000   
+37    0.4500      rate  0.3780  0.5674  0.6844  0.3780  0.5674  0.3156   
+38    0.4500     optim  0.3721  0.5436  0.6875  0.3721  0.5436  0.3125   
+39    0.4500  temporal  0.3798  0.6001  0.3984  0.3798  0.6001  0.6016   
+
+    weighted_utility  rank  
+0             0.8049     1  
+1             0.7712     2  
+2             0.7648     3  
+3            -0.5523     4  
+4             0.7955     1  
+5             0.7926     2  
+6             0.7891     3  
+7            -0.0043     4  
+8             0.7428     1  
+9             0.7198     2  
+10            0.7005     3  
+11           -0.0850     4  
+12            0.8830     1  
+13            0.8014     2  
+14            0.7983     3  
+15           -1.5676     4  
+16            0.8593     1  
+17            0.8211     2  
+18            0.8162     3  
+19           -0.9612     4  
+20            0.6743     1  
+21            0.5433     2  
+22            0.5344     3  
+23            0.4595     4  
+24            0.5543     1  
+25            0.4772     2  
+26            0.4695     3  
+27            0.4276     4  
+28            0.6640     1  
+29            0.5529     2  
+30            0.5381     3  
+31            0.5157     4  
+32            0.8046     1  
+33            0.5997     2  
+34            0.5956     3  
+35            0.4351     4  
+36            0.6833     1  
+37            0.5348     2  
+38            0.5312     3  
+39            0.4102     4  </pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">Saved: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment4_weight_sensitivity/Manuscript_Table_Utility_WeightSensitivity_RankSummary.csv
+</pre></div><div class="nb-out"><div class="nb-out-title">Output</div><pre class="nb-out-pre">        benchmark              scenario  rank_1 rank_2  rank_3    rank_4
+0       coco_4cls              balanced  sparse   rate   optim  temporal
+1       coco_4cls  performance_dominant  sparse   rate   optim  temporal
+2       coco_4cls    performance_safety  sparse   rate   optim  temporal
+3       coco_4cls       safety_dominant  sparse   rate   optim  temporal
+4       coco_4cls    stability_dominant  sparse   rate   optim  temporal
+5  emnist_letters              balanced  sparse   rate   optim  temporal
+6  emnist_letters  performance_dominant    rate  optim  sparse  temporal
+7  emnist_letters    performance_safety  sparse  optim    rate  temporal
+8  emnist_letters       safety_dominant  sparse  optim    rate  temporal
+9  emnist_letters    stability_dominant  sparse   rate   optim  temporal</pre></div><div class="nb-out"><div class="nb-out-title">Stream</div><pre class="nb-out-pre">Saved: /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment4_weight_sensitivity/Figure_Utility_WeightSensitivity_COCO.png
+
+Issue 2 complete outputs generated:
+ - /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/Manuscript_Table_COCO_SampleBootstrap_CI.csv
+ - /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment3_pareto_frontier/Manuscript_Table_Pareto_Frontier.csv
+ - /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment3_pareto_frontier/Figure_Pareto_Frontier_COCO.png
+ - /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment4_weight_sensitivity/Manuscript_Table_Utility_WeightSensitivity.csv
+ - /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment4_weight_sensitivity/Manuscript_Table_Utility_WeightSensitivity_RankSummary.csv
+ - /content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/reviewer2_comment_outputs/comment4_weight_sensitivity/Figure_Utility_WeightSensitivity_COCO.png
+</pre></div></section>
+</div>
+</body>
+</html>
