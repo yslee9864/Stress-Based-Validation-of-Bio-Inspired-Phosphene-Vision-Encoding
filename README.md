@@ -49,7 +49,7 @@ The manuscript tables, figures, supplementary files, and response materials were
 The final recorded run used:
 
 - Python: `3.12.13`
-- Platform: Linux x86_64
+- Platform: window11
 - NumPy: `2.0.2`
 - pandas: `2.2.2`
 - PyTorch: `2.11.0+cpu`
