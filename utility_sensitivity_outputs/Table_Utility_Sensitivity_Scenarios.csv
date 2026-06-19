@@ -1,5 +1,0 @@
-Scenario,lambda_P,lambda_R,lambda_S
-Balanced,0.3333333333333333,0.3333333333333333,0.3333333333333333
-Performance-dominant,0.6,0.2,0.2
-Stability-dominant,0.2,0.6,0.2
-Safety-dominant,0.2,0.2,0.6
