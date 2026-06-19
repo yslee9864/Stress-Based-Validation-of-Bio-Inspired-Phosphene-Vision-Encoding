@@ -1,2 +1,0 @@
-decoder,n_classes,percept_size,latent_dim,epochs,batch_size,lr,training_protocol
-CNN(1-16-32) + FC(latent_dim) + Linear,4,32,64,8,128,0.001,benchmark-specific shared decoder; clean percepts pooled across encoders; trained once then fixed
