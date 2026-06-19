@@ -1,5 +1,0 @@
-Encoder,Principle,Key knobs
-rate,rate-based amplitude mapping,"global f,pw from input statistics; amplitude proportional to intensity"
-sparse,sparse electrode selection with diversity constraint,"k_max, min_sep; amplitude on selected electrodes"
-temporal,latency modulation plus time-weighted integration,"tau_t, k_max; latency-weighted amplitude"
-optim,constrained optimization with sparsity regularization,"lam, steps; projection to feasible space"
