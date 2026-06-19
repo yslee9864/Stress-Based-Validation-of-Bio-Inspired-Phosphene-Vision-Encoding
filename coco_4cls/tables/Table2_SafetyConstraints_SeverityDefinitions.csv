@@ -1,0 +1,4 @@
+Constraint,Condition,Severity,Param
+Duty,f_hz * pw_s <= duty_max,"max(0, (duty - duty_max)/duty_max)",0.1
+Charge (proxy),sum(amp) * f_hz * pw_s <= q_max,"max(0, (Q - q_max)/q_max)",0.015
+Sparsity,active_electrodes <= k_max,"max(0, (active - k_max)/k_max)",40.0

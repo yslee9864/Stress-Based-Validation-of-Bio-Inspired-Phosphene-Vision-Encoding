@@ -1,0 +1,9 @@
+Category,Item,Specification
+Benchmark,name,coco_4cls
+Benchmark,n_classes,4
+Benchmark,split,4000/1000/1000
+Preprocessing,input normalization,"[0,1] grayscale"
+Preprocessing,electrode grid,16x16
+Preprocessing,percept size,32x32
+Stress,operators,"clean, noise, blur, dropout, occlusion"
+Stress,levels,"0.0, 0.25, 0.5, 0.75, 1.0"

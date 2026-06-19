@@ -1,0 +1,8 @@
+{
+  "benchmark": "coco_4cls",
+  "n_classes": 4,
+  "train_n": 4000,
+  "val_n": 1000,
+  "test_n": 1000,
+  "artifacts_root": "/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/coco_4cls"
+}

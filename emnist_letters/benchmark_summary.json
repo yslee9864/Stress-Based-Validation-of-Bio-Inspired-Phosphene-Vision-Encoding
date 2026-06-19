@@ -1,0 +1,8 @@
+{
+  "benchmark": "emnist_letters",
+  "n_classes": 26,
+  "train_n": 20000,
+  "val_n": 3000,
+  "test_n": 3000,
+  "artifacts_root": "/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202/emnist_letters"
+}

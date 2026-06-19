@@ -1,0 +1,13 @@
+benchmark,encoder,metric,estimate,CI95_low,CI95_high,n_test,n_bootstrap,bootstrap_unit,bootstrap_type
+coco_4cls,optim,accuracy,0.3,0.273,0.327,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,optim,balanced_accuracy,0.3,0.273,0.327,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,optim,macro_f1,0.292,0.2644,0.3199,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,rate,accuracy,0.301,0.273,0.329,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,rate,balanced_accuracy,0.301,0.273,0.329,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,rate,macro_f1,0.2932,0.2655,0.321,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,sparse,accuracy,0.3,0.272,0.328,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,sparse,balanced_accuracy,0.3,0.272,0.328,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,sparse,macro_f1,0.2892,0.2607,0.3166,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,temporal,accuracy,0.304,0.276,0.332,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,temporal,balanced_accuracy,0.304,0.276,0.332,1000,5000,test sample,stratified percentile bootstrap by true class
+coco_4cls,temporal,macro_f1,0.297,0.2694,0.3252,1000,5000,test sample,stratified percentile bootstrap by true class

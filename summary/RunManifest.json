@@ -1,0 +1,20 @@
+{
+  "run_id": "Run_seed0042_20260614_003202",
+  "seed": 42,
+  "device": "cpu",
+  "project_root": "/content/drive/MyDrive/RunPackageC_EMNIST_COCO",
+  "run_root": "/content/drive/MyDrive/RunPackageC_EMNIST_COCO/runs/Run_seed0042_20260614_003202",
+  "data_dir": "/content/drive/MyDrive/RunPackageC_EMNIST_COCO/data",
+  "cache_dir": "/content/drive/MyDrive/RunPackageC_EMNIST_COCO/cache",
+  "python": "3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0]",
+  "platform": "Linux-6.6.122+-x86_64-with-glibc2.35",
+  "numpy": "2.0.2",
+  "pandas": "2.2.2",
+  "torch": "2.11.0+cpu",
+  "cuda_available": false,
+  "cudnn_deterministic": true,
+  "cudnn_benchmark": false,
+  "hashseed_env": "42",
+  "elapsed_min": 46.68446859518687,
+  "completed": true
+}

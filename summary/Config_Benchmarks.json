@@ -1,0 +1,86 @@
+{
+  "cfg": {
+    "run_mode": "final",
+    "base_img_size": 64,
+    "electrode_grid": 16,
+    "percept_size": 32,
+    "phosphene_blur_sigma": 1.0,
+    "amp_min": 0.0,
+    "amp_max": 1.0,
+    "f_min": 10.0,
+    "f_max": 60.0,
+    "pw_min": 5e-05,
+    "pw_max": 0.0005,
+    "duty_max": 0.1,
+    "q_max": 0.015,
+    "k_max": 40,
+    "stress_levels": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "latent_dim": 64,
+    "epochs": 8,
+    "batch_size": 128,
+    "lr": 0.001,
+    "tda_n": 300,
+    "tda_pca_dim": 10,
+    "tda_maxdim": 1,
+    "run_fuzzing": true,
+    "fuzz_seed_images": 128,
+    "fuzz_iters": 80,
+    "fuzz_mutations_per_iter": 16
+  },
+  "benchmarks": [
+    {
+      "name": "emnist_letters",
+      "n_classes": 26,
+      "train_max": 20000,
+      "val_max": 3000,
+      "test_max": 3000,
+      "label_names": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M",
+        "N",
+        "O",
+        "P",
+        "Q",
+        "R",
+        "S",
+        "T",
+        "U",
+        "V",
+        "W",
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    {
+      "name": "coco_4cls",
+      "n_classes": 4,
+      "train_max": 4000,
+      "val_max": 1000,
+      "test_max": 1000,
+      "label_names": [
+        "none",
+        "person",
+        "car",
+        "both"
+      ]
+    }
+  ]
+}

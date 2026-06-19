@@ -1,0 +1,13 @@
+benchmark,split,class_id,class_name,count
+coco_4cls,train,0,none,1000
+coco_4cls,train,1,person,1000
+coco_4cls,train,2,car,1000
+coco_4cls,train,3,both,1000
+coco_4cls,val,0,none,250
+coco_4cls,val,1,person,250
+coco_4cls,val,2,car,250
+coco_4cls,val,3,both,250
+coco_4cls,test,0,none,250
+coco_4cls,test,1,person,250
+coco_4cls,test,2,car,250
+coco_4cls,test,3,both,250
