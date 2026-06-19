@@ -1,296 +1,172 @@
 # Stress-Based Assessment of Bio-Inspired Phosphene Vision Encoding
 
-This repository provides reproducibility materials for the manuscript:
+This repository contains the reproducibility materials associated with the revised manuscript:
 
-**Stress-Based Assessment of Bio-Inspired Phosphene Vision Encoding: Trade-Offs among Performance, Safety, and Representation Stability**
+**Stress-Based Assessment of Bio-Inspired Phosphene Vision Encoding: Trade-Offs among Performance, Residual Proxy Safety Burden, and Topology-Based Representation Metrics**
 
----
+Manuscript ID: `biomimetics-4335630`
 
-## Repository Structure
+## 1. Scope
+
+The repository provides the final fixed-seed notebook and canonical outputs used for the revised manuscript.
+
+The study evaluates four phosphene-vision encoding strategies:
+
+- Rate encoding
+- Sparse encoding
+- Temporal encoding
+- Optimized encoding
+
+The benchmarks are:
+
+- EMNIST Letters
+- A reduced four-class COCO-derived image-level classification benchmark
+
+The findings are exploratory, benchmark-specific, and configuration-dependent. They should not be interpreted as clinical validation, implant-user validation, physiological safety validation, or deployment-level robustness evidence.
+
+## 2. Final Reproducibility Notebook
+
+The final notebook is:
+
+`FINAL_REPRO_RunPackageC_EMNIST_COCO_seed0042_20260614.ipynb`
+
+This is the canonical executable notebook associated with the revised manuscript and the uploaded result files.
+
+## 3. Reproducibility Configuration
+
+The final analysis uses the fixed random seed:
+
+`42`
+
+Final run identifier:
+
+`Run_seed0042_20260614_003202`
+
+The manuscript tables, figures, supplementary files, and response materials were regenerated from, or directly verified against, the same final fixed-seed canonical result set.
+
+## 4. Recorded Execution Environment
+
+The final recorded run used:
+
+- Python: `3.12.13`
+- Platform: Linux x86_64
+- NumPy: `2.0.2`
+- pandas: `2.2.2`
+- PyTorch: `2.11.0+cpu`
+- Device: CPU
+- CUDA available: `false`
+- Recorded elapsed time: approximately `46.7 minutes`
+
+Runtime may vary depending on the execution environment.
+
+## 5. Recommended Execution Procedure
+
+1. Open `FINAL_REPRO_RunPackageC_EMNIST_COCO_seed0042_20260614.ipynb` in Google Colab or an equivalent Python environment.
+2. Use a CPU runtime unless the notebook is deliberately modified.
+3. Keep the fixed seed unchanged.
+4. Run all cells sequentially.
+5. Reuse the saved split indices and fixed-seed configuration.
+6. Compare the generated outputs with the canonical files in this repository.
+
+## 6. Repository Structure
 
 ```text
 .
 ├── README.md
-├── notebooks/
-│   ├── RunPackageC_EMNIST_COCO_FullRepro_v2_0407.ipynb
-│   └── RunPackageC_EMNIST_COCO_FullRepro_v2_0407.html
-├── emnist_letters_figure_model_table/
+├── FINAL_REPRO_RunPackageC_EMNIST_COCO_seed0042_20260614.ipynb
+├── coco_4cls/
 │   ├── figures/
 │   ├── models/
+│   ├── raw/
 │   ├── tables/
+│   ├── BenchmarkSeed.json
 │   └── benchmark_summary.json
-├── coco_4cls_figure_model_table/
+├── emnist_letters/
 │   ├── figures/
 │   ├── models/
+│   ├── raw/
 │   ├── tables/
+│   ├── BenchmarkSeed.json
 │   └── benchmark_summary.json
-├── summary/
-│   ├── CrossBenchmark_TriObjective_Summary.csv
-│   └── SanityCheck_Artifacts.csv
-├── utility_sensitivity_outputs/
-│   ├── Table_Utility_Sensitivity_Weights.csv
-│   ├── Table_Utility_Sensitivity_Rankings.csv
-│   └── Table_Utility_Sensitivity_Scenarios.csv
 ├── reviewer2_comment_outputs/
 │   ├── comment1_coco_diagnostic_metrics/
 │   ├── comment2_uncertainty_bootstrap_CI/
-│   └── comment3_pareto_dominance/
-└── supplementary/
-    ├── supplementary_materials.pdf
-    ├── Supplementary_Figure_S1_OperatorWise_Accuracy.png
-    ├── Supplementary_Figure_S2_OperatorWise_Severity.png
-    └── Supplementary_Figure_S3_OperatorWise_TSI.png
+│   ├── comment3_pareto_dominance/
+│   ├── comment3_pareto_frontier/
+│   └── comment4_weight_sensitivity/
+└── summary/
+    ├── Config_Benchmarks.json
+    ├── CrossBenchmark_TriObjective_Summary.csv
+    ├── RunManifest.json
+    └── SanityCheck_Artifacts.csv
 ```
 
----
+## 7. Manuscript-to-File Mapping
 
-## Main Notebook
+### COCO-derived diagnostic analysis
 
-The original executable notebook is provided in:
+| Manuscript item | Supporting file |
+|---|---|
+| Table 5.1a | `reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/Manuscript_Table_COCO_Diagnostic_Metrics.csv` |
+| Table 5.1b | `reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_rate.csv` |
+| Table 5.1b | `reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_sparse.csv` |
+| Table 5.1b | `reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_temporal.csv` |
+| Table 5.1b | `reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_optim.csv` |
+| Table 5.1c | Encoder-specific `COCO_confusion_matrix_*.csv` and `COCO_confusion_matrix_*.png` files in the same folder |
 
-```text
-notebooks/RunPackageC_EMNIST_COCO_FullRepro_v2_0407.ipynb
-```
+Table 5.1a reports accuracy, balanced accuracy, macro-F1, the four-class chance baseline, and the accuracy-minus-chance margin.
 
-This notebook is retained as the original executable analysis file used for the manuscript-level experiments.
+### Tri-objective and uncertainty analyses
 
-If GitHub fails to render the `.ipynb` notebook preview because of notebook metadata or renderer limitations, please use one of the following alternatives:
+| Manuscript item | Supporting file |
+|---|---|
+| Table 5.5 | `summary/CrossBenchmark_TriObjective_Summary.csv` |
+| Table 5.5a | `reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/Manuscript_Table_Utility_ConditionBootstrap_CI.csv` |
+| Table 5.6 | `reviewer2_comment_outputs/comment4_weight_sensitivity/Manuscript_Table_Utility_WeightSensitivity.csv` |
+| Figure 5.8 | `reviewer2_comment_outputs/comment3_pareto_frontier/Manuscript_Table_Pareto_Frontier.csv` |
+| Table 5.6a | `reviewer2_comment_outputs/comment3_pareto_dominance/Manuscript_Table_Pareto_Dominance.csv` |
 
-1. Click **Raw** and download the notebook, then open it in Google Colab, Jupyter Notebook, or JupyterLab.
-2. View the static HTML version:
+The condition-level bootstrap analysis uses 5000 percentile-bootstrap resamples over the non-clean encoder–operator–level rows.
 
-```text
-notebooks/RunPackageC_EMNIST_COCO_FullRepro_v2_0407.html
-```
+Pareto-front membership and pairwise dominance were computed from the original unnormalized tri-objective values. Normalized values were used only for visualization.
 
-The HTML file is provided as a browser-accessible fallback for inspection without relying on GitHub’s notebook renderer.
+### Methods and condition-level outputs
 
----
+| Content | Supporting files |
+|---|---|
+| Benchmark configuration, stress operators, and sweep levels | `emnist_letters/tables/Table4_1_BenchmarkConfig.csv`; `coco_4cls/tables/Table4_1_BenchmarkConfig.csv` |
+| Residual proxy severity definitions | `emnist_letters/tables/Table2_SafetyConstraints_SeverityDefinitions.csv`; `coco_4cls/tables/Table2_SafetyConstraints_SeverityDefinitions.csv` |
+| Condition-wise performance and residual proxy safety-burden metrics | `emnist_letters/tables/TableStress_PerfSafety_ByEncoderOpLevel.csv`; `coco_4cls/tables/TableStress_PerfSafety_ByEncoderOpLevel.csv` |
 
-## Benchmark-Specific Results
+The original program-generated filenames were retained to preserve traceability between notebook outputs, supplementary files, manuscript tables, and response materials.
 
-Benchmark-specific figures, tables, trained model artifacts, and summary files are organized separately for the two evaluated benchmarks.
+## 8. Interpretation Notes
 
-### EMNIST Letters
+### COCO-derived benchmark
 
-```text
-emnist_letters_figure_model_table/
-├── figures/
-├── models/
-├── tables/
-└── benchmark_summary.json
-```
+The reduced four-class COCO-derived benchmark operates in a low-performance, narrow-margin discrimination regime. Encoder preferences should therefore be interpreted only within this restricted diagnostic setting, not as evidence of robust natural-scene understanding.
 
-This folder contains the exported artifacts for the EMNIST Letters symbolic-recognition benchmark.
+### Fixed-decoder configuration
 
-### Reduced Four-Class COCO-Derived Benchmark
+A benchmark-specific decoder was trained using pooled clean percepts from the four encoders and then held fixed during stress evaluation. This reduces variation from repeated decoder retraining but does not disentangle encoder-induced effects from decoder sensitivity.
 
-```text
-coco_4cls_figure_model_table/
-├── figures/
-├── models/
-├── tables/
-└── benchmark_summary.json
-```
+The reported findings therefore represent configuration-dependent joint encoder–decoder responses rather than encoder-only robustness measurements.
 
-This folder contains the exported artifacts for the reduced four-class COCO-derived image-level classification benchmark.
+### Topology-based representation metric
 
----
+The implementation label `TSI` is retained in some exported files for compatibility with the analysis pipeline. In the manuscript, it is interpreted as a normalized topology-based representation diagnostic or metric within the evaluated configuration, not as a validated general measure of representational stability.
 
-## Cross-Benchmark Summary
+### Residual proxy safety burden
 
-Cross-benchmark summary files are provided in:
+The safety-related quantity is a residual proxy safety burden based on post-projection constraint violations. It is not a physiological, electrochemical, clinical, or implant safety measurement.
 
-```text
-summary/
-```
+### Stochastic stress exploration
 
-Key files include:
+The fuzzing-related outputs are exploratory stress-sampling artifacts from the final fixed-seed pipeline. They should not be interpreted as exhaustive multi-operator testing, cross-benchmark deployment validation, or deployment-level operating-envelope characterization.
 
-```text
-summary/CrossBenchmark_TriObjective_Summary.csv
-summary/SanityCheck_Artifacts.csv
-```
+## 9. Data Availability
 
-These files summarize benchmark-level comparisons and artifact-generation checks.
+EMNIST and COCO are publicly available benchmark datasets and remain subject to their respective licenses and terms of use.
 
----
-
-## Utility Sensitivity Analysis
-
-The utility-weight sensitivity analysis added during revision is provided in:
-
-```text
-utility_sensitivity_outputs/Table_Utility_Sensitivity_Weights.csv
-utility_sensitivity_outputs/Table_Utility_Sensitivity_Rankings.csv
-utility_sensitivity_outputs/Table_Utility_Sensitivity_Scenarios.csv
-```
-
-This post-hoc analysis evaluates four operating-preference scenarios:
-
-- Balanced
-- Performance-dominant
-- Stability-dominant
-- Safety-dominant
-
-The analysis was added to examine whether the tri-objective utility ranking depends on the assumed operating preference weights.
-
----
-
-## Reviewer 2 Comment Outputs
-
-Additional experimental outputs generated in response to Reviewer 2's comments are provided in:
-
-```text
-reviewer2_comment_outputs/
-├── comment1_coco_diagnostic_metrics/
-├── comment2_uncertainty_bootstrap_CI/
-└── comment3_pareto_dominance/
-```
-
-These outputs correspond directly to the additional analyses added during revision.
-
-### Comment 1: COCO-Derived Diagnostic Metrics
-
-Reviewer 2 requested additional diagnostic metrics for the reduced four-class COCO-derived benchmark, including balanced accuracy, macro-F1, per-class precision, per-class recall, per-class F1-score, and confusion matrices.
-
-The corresponding outputs are provided in:
-
-```text
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/
-```
-
-Key files include:
-
-```text
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/Manuscript_Table_COCO_Diagnostic_Metrics.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_rate.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_sparse.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_temporal.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_optim.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_rate.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_sparse.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_temporal.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_classification_report_optim.csv
-```
-
-Confusion-matrix figures are also provided:
-
-```text
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_rate.png
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_sparse.png
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_temporal.png
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_confusion_matrix_optim.png
-```
-
-Clean-condition prediction files are included for traceability:
-
-```text
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_clean_predictions_rate.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_clean_predictions_sparse.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_clean_predictions_temporal.csv
-reviewer2_comment_outputs/comment1_coco_diagnostic_metrics/COCO_clean_predictions_optim.csv
-```
-
-### Comment 2: Statistical Uncertainty and Bootstrap Confidence Intervals
-
-Reviewer 2 requested uncertainty estimates for accuracy and tri-objective utility values.
-
-The corresponding outputs are provided in:
-
-```text
-reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/
-```
-
-Key files include:
-
-```text
-reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/Accuracy_Wilson_CI_ByEncoderOpLevel.csv
-reviewer2_comment_outputs/comment2_uncertainty_bootstrap_CI/Manuscript_Table_Utility_ConditionBootstrap_CI.csv
-```
-
-The utility confidence intervals were computed using a condition-level percentile bootstrap over the non-clean encoder–operator–level rows. Accuracy confidence intervals were estimated using Wilson binomial confidence intervals.
-
-### Comment 3: Pareto-Style Dominance Analysis
-
-Reviewer 2 requested additional multi-objective decision analysis beyond weighted utility values.
-
-The corresponding output is provided in:
-
-```text
-reviewer2_comment_outputs/comment3_pareto_dominance/
-```
-
-Key file:
-
-```text
-reviewer2_comment_outputs/comment3_pareto_dominance/Manuscript_Table_Pareto_Dominance.csv
-```
-
-This table reports a Pareto-style dominance summary across the three stress-integrated objective axes:
-
-- `TSI_P`: stress-integrated functional performance, treated as a maximization objective
-- `TSI_R`: stress-integrated topology-based representation metric, treated as a maximization objective
-- `R_safe`: integrated residual proxy safety burden, treated as a minimization objective
-
-An encoder was considered dominated if another encoder achieved equal or better values on all three axes and a strictly better value on at least one axis.
-
----
-
-## Supplementary Materials
-
-Additional supplementary material is provided in:
-
-```text
-supplementary/supplementary_materials.pdf
-```
-
-Supplementary figures are provided as:
-
-```text
-supplementary/Supplementary_Figure_S1_OperatorWise_Accuracy.png
-supplementary/Supplementary_Figure_S2_OperatorWise_Severity.png
-supplementary/Supplementary_Figure_S3_OperatorWise_TSI.png
-```
-
-These supplementary figures provide operator-wise accuracy, residual severity, and topology-based representation metric trajectories.
-
----
-
-## Access Note
-
-This repository is public and does not require GitHub login for access.
-
-If the GitHub notebook preview does not render properly, the raw notebook can still be downloaded and opened in Google Colab, Jupyter Notebook, or JupyterLab. A static HTML version of the notebook is also provided for direct browser-based inspection.
-
----
-
-## Reproducibility Note
-
-The repository provides:
-
-- the final executable analysis notebook,
-- a static HTML version of the notebook,
-- benchmark-specific figures, tables, trained model artifacts, and summary files,
-- cross-benchmark summary files,
-- utility sensitivity analysis outputs,
-- additional experimental outputs generated in response to Reviewer 2,
-- supplementary materials and supplementary figures.
-
-All major manuscript-level results were generated from the final execution notebook. Some analyses may require local path adjustment depending on the execution environment.
-
-The framework should be interpreted as a simulation-based assessment pipeline under simplified SPV conditions rather than as a clinically or physiologically calibrated prosthetic-vision validation environment.
-
----
-
-## Data Note
-
-The experiments use publicly available benchmark datasets, including EMNIST Letters and MS COCO-derived image-level samples. Original dataset files are not redistributed in this repository. Users should obtain the original datasets from their respective official sources and licenses if full re-execution is required.
-
-The repository provides exported artifacts, result tables, figures, and revision-related diagnostic outputs generated from the final experimental run.
-
----
-
-## License
-
-Please refer to the repository license file for usage terms. Original datasets remain subject to their respective licenses.
+This repository does not redistribute source benchmark images unless redistribution is permitted under the applicable dataset license.
+datasets remain subject to their respective licenses.
